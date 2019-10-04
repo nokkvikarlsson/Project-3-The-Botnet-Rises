@@ -50,6 +50,20 @@ class Client
     ~Client(){}            // Virtual destructor defined for base class
 };
 
+// Simple class for handling connections from servers.
+//
+// Server(int socket) - socket to send/receive traffic from server.
+class Server
+{
+  public:
+    int sock;              // socket of server connection
+    std::string name;           // Limit length of name of client's user
+
+    Server(int socket) : sock(socket){} 
+
+    ~Server(){}            // Virtual destructor defined for base class
+};
+
 // Note: map is not necessarily the most efficient method to use here,
 // especially for a server with large numbers of simulataneous connections,
 // where performance is also expected to be an issue.
@@ -58,6 +72,7 @@ class Client
 // (indexed on socket no.) sacrificing memory for speed.
 
 std::map<int, Client*> clients; // Lookup table for per Client information
+std::map<int, Server*> servers; // Lookup table for per Server information
 
 // Open socket for specified port.
 //
@@ -225,14 +240,18 @@ int main(int argc, char* argv[])
 {
     bool finished;
     int listenSock;                 // Socket for connections from client
-    int clientSock;                 // Socket for connecting client
     int listenServerSock;           // Socket for connection from other servers
+    int clientSock;                 // Socket for connecting client
+    int serverSock;                 // Socket for connecting server
     fd_set openSockets;             // Current open sockets 
     fd_set readSockets;             // Socket list for select()        
     fd_set exceptSockets;           // Exception socket list
     int maxfds;                     // Passed to select() as max fd in set
+    int maxfds2;
     struct sockaddr_in client;
+    struct sockaddr_in server;
     socklen_t clientLen;
+    socklen_t serverLen;
     char buffer[1025];              // buffer for reading from clients
 
     if(argc != 2)
@@ -241,15 +260,10 @@ int main(int argc, char* argv[])
         exit(0);
     }
 
-    // Setup a socket for server to listen to other servers
+    // Setup a socket for server to listen for other servers
     listenServerSock = open_socket(atoi(argv[1]));
-    printf("Listening on port: %d\n", atoi(argv[1]));
-
-    // Setup socket for server to listen to
-    listenSock = open_socket(6666);
-    printf("Listening on port: %d\n", atoi(argv[1]));
-
-    if(listen(listenSock, BACKLOG) < 0)
+    printf("Listening for servers on port: %d\n", atoi(argv[1]));
+    if(listen(listenServerSock, BACKLOG) < 0)
     {
         printf("Listen failed on port %s\n", argv[1]);
         exit(0);
@@ -258,8 +272,24 @@ int main(int argc, char* argv[])
     // Add listen socket to socket set we are monitoring
     {
         FD_ZERO(&openSockets);
+        FD_SET(listenServerSock, &openSockets);
+        maxfds = listenServerSock;
+    }
+
+    // Setup socket for server to listen for client connection
+    int listenPort = 6666;
+    listenSock = open_socket(listenPort);
+    printf("Listening for client on port: %d\n", listenPort);
+    if(listen(listenSock, BACKLOG) < 0)
+    {
+        printf("Listen failed on port %d\n", listenPort);
+        exit(0);
+    }
+    else
+    // Add listen socket to socket set we are monitoring
+    {
         FD_SET(listenSock, &openSockets);
-        maxfds = listenSock;
+        maxfds = std::max(listenSock, listenServerSock);
     }
 
     finished = false;
@@ -290,7 +320,7 @@ int main(int argc, char* argv[])
                FD_SET(clientSock, &openSockets);
 
                // And update the maximum file descriptor
-               maxfds = std::max(maxfds, clientSock) ;
+               maxfds = std::max(maxfds, clientSock);
 
                // create a new client to store information.
                clients[clientSock] = new Client(clientSock);
@@ -299,6 +329,26 @@ int main(int argc, char* argv[])
                n--;
 
                printf("Client connected on server: %d\n", clientSock);
+            }
+            // Second, accept any new connections to the server from other serveras from the listen Server socket
+            if(FD_ISSET(listenServerSock, &readSockets))
+            {
+               serverSock = accept(listenServerSock, (struct sockaddr *)&server,
+                                   &serverLen);
+               printf("accept***\n");
+               // Add new client to the list of open sockets
+               FD_SET(serverSock, &openSockets);
+
+               // And update the maximum file descriptor
+               maxfds = std::max(maxfds, serverSock);
+
+               // create a new client to store information.
+               servers[serverSock] = new Server(serverSock);
+
+               // Decrement the number of sockets waiting to be dealt with
+               n--;
+
+               printf("Server connected on server: %d\n", serverSock);
             }
             // Now check for commands from clients
             while(n-- > 0)
@@ -324,6 +374,31 @@ int main(int argc, char* argv[])
                       {
                           std::cout << buffer << std::endl;
                           clientCommand(client->sock, &openSockets, &maxfds, 
+                                        buffer);
+                      }
+                  }
+               }
+               for(auto const& pair : servers)
+               {
+                  Server *server = pair.second;
+
+                  if(FD_ISSET(server->sock, &readSockets))
+                  {
+                      // recv() == 0 means client has closed connection
+                      if(recv(server->sock, buffer, sizeof(buffer), MSG_DONTWAIT) == 0)
+                      {
+                          printf("Server closed connection: %d", server->sock);
+                          close(server->sock);      
+
+                          closeClient(server->sock, &openSockets, &maxfds);
+
+                      }
+                      // We don't check for -1 (nothing received) because select()
+                      // only triggers if there is something on the socket for us.
+                      else
+                      {
+                          std::cout << buffer << std::endl;
+                          clientCommand(server->sock, &openSockets, &maxfds, 
                                         buffer);
                       }
                   }
