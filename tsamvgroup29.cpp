@@ -133,6 +133,62 @@ int open_socket(int portno)
    }
 }
 
+void connectServer(const char * ipAddr, const char * portNo)
+{
+   struct addrinfo hints, *svr;              // Network host entry for server
+   struct sockaddr_in serv_addr;             // Socket address for server
+   int serverSocket;                         // Socket used for server 
+   int nwrite;                               // No. bytes written to server
+   char buffer[1025];                        // buffer for writing to server
+   bool finished;                   
+   int set = 1;                              // Toggle for setsockopt
+
+    hints.ai_family   = AF_INET;            // IPv4 only addresses
+    hints.ai_socktype = SOCK_STREAM;
+
+    memset(&hints,   0, sizeof(hints));
+
+    if(getaddrinfo(ipAddr, portNo, &hints, &svr) != 0)
+    {
+        perror("getaddrinfo failed: ");
+        exit(0);
+    }
+
+    struct hostent *server;
+    server = gethostbyname(ipAddr);
+
+    bzero((char *) &serv_addr, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    bcopy((char *)server->h_addr,
+        (char *)&serv_addr.sin_addr.s_addr,
+        server->h_length);
+    serv_addr.sin_port = htons(atoi(portNo));
+
+    serverSocket = socket(AF_INET, SOCK_STREAM, 0);
+
+    // Turn on SO_REUSEADDR to allow socket to be quickly reused after 
+    // program exit.
+
+    if(setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, &set, sizeof(set)) < 0)
+    {
+        printf("Failed to set SO_REUSEADDR for port %s\n", portNo);
+        perror("setsockopt failed: ");
+    }
+
+   
+    if(connect(serverSocket, (struct sockaddr *)&serv_addr, sizeof(serv_addr) )< 0)
+    {
+        printf("Failed to open socket to server: %s\n", ipAddr);
+        perror("Connect failed: ");
+        exit(0);
+    }
+    else
+    {
+        printf("Server Connected");
+    }
+}
+
+
 // Close a client's connection, remove it from the client list, and
 // tidy up select sockets afterwards.
 
@@ -159,7 +215,6 @@ void closeClient(int clientSocket, fd_set *openSockets, int *maxfds)
 }
 
 // Process command from client on the server
-
 void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds, 
                   char *buffer) 
 {
@@ -175,6 +230,11 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
   if((tokens[0].compare("CONNECT") == 0) && (tokens.size() == 2))
   {
      clients[clientSocket]->name = tokens[1];
+  }
+  // CONNECT SERVER TO ANOTHER SERVER
+  else if((tokens[0].compare("CONNECT") == 0) && (tokens.size() == 3))
+  {
+     connectServer(tokens[1].c_str(), tokens[2].c_str());
   }
   else if(tokens[0].compare("LEAVE") == 0)
   {
@@ -277,7 +337,7 @@ int main(int argc, char* argv[])
     }
 
     // Setup socket for server to listen for client connection
-    int listenPort = 6666;
+    int listenPort = 6667;
     listenSock = open_socket(listenPort);
     printf("Listening for client on port: %d\n", listenPort);
     if(listen(listenSock, BACKLOG) < 0)
