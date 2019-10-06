@@ -27,6 +27,8 @@
 #include <map>
 
 #include <unistd.h>
+#include <ifaddrs.h>
+#include <net/if.h>
 
 // fix SOCK_NONBLOCK for OSX
 #ifndef SOCK_NONBLOCK
@@ -133,7 +135,35 @@ int open_socket(int portno)
    }
 }
 
-void connectServer(const char * ipAddr, const char * portNo)
+/* source: https://tinyurl.com/ya5prw53
+ * get the local ip displayed to a host 
+ */
+void get_local_ip(char *buffer) {
+    int sock = socket(AF_INET, SOCK_DGRAM, 0);
+
+    const char *kGoogleDnsIp = "8.8.8.8";
+    int dns_port = 53;
+
+    struct sockaddr_in serv;
+
+    memset(&serv, 0, sizeof(serv));
+    serv.sin_family = AF_INET;
+    serv.sin_addr.s_addr = inet_addr(kGoogleDnsIp);
+    serv.sin_port = htons(dns_port);
+
+    int err = connect(sock, (const struct sockaddr *)&serv, sizeof(serv));
+
+    struct sockaddr_in name;
+    socklen_t namelen = sizeof(name);
+    err = getsockname(sock, (struct sockaddr *)&name, &namelen);
+
+    const char *p = inet_ntop(AF_INET, &name.sin_addr, buffer, 100);
+
+    close(sock);
+}
+
+
+int connectServer(const char * ipAddr, const char * portNo)
 {
    struct addrinfo hints, *svr;              // Network host entry for server
    struct sockaddr_in serv_addr;             // Socket address for server
@@ -168,14 +198,12 @@ void connectServer(const char * ipAddr, const char * portNo)
 
     // Turn on SO_REUSEADDR to allow socket to be quickly reused after 
     // program exit.
-
     if(setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, &set, sizeof(set)) < 0)
     {
         printf("Failed to set SO_REUSEADDR for port %s\n", portNo);
         perror("setsockopt failed: ");
     }
 
-   
     if(connect(serverSocket, (struct sockaddr *)&serv_addr, sizeof(serv_addr) )< 0)
     {
         printf("Failed to open socket to server: %s\n", ipAddr);
@@ -186,8 +214,9 @@ void connectServer(const char * ipAddr, const char * portNo)
     {
         printf("Server Connected");
     }
-}
 
+    return serverSocket;
+}
 
 // Close a client's connection, remove it from the client list, and
 // tidy up select sockets afterwards.
@@ -214,86 +243,140 @@ void closeClient(int clientSocket, fd_set *openSockets, int *maxfds)
      FD_CLR(clientSocket, openSockets);
 }
 
+std::string addStartAndEnd(std::string msg)
+{
+    std::string start = "";
+    std::string end = "";
+    std::string retMsg = "";
+
+    start = (char)0x01;
+    end = (char)0x04;
+    retMsg = start + msg + end;
+
+    return retMsg;
+}
+
+
+// Process commands from servers on server.
+void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds, 
+                  char *buffer)
+{
+    std::vector<std::string> tokens;
+    std::string token;
+
+    // Split command from client into tokens for parsing
+    std::stringstream stream(buffer);
+
+    //while(stream >> token)
+      //  tokens.push_back(token);
+    
+    while(std::getline(stream, token, ',')) {
+        tokens.push_back(token);
+    }
+
+    std::cout << "THIS IS THE BUFFER: " << buffer << std::endl;
+    std::cout << "THIS IS THE TOKEN 0: " << token[0] << std::endl;
+    char ip[32];
+    get_local_ip(ip);
+
+    std::cout << "THIS IS THE IP: " << ip << std::endl;
+
+    // If the server receives the ACCEPTED message
+    if((tokens[0].compare("LISTSERVERS") == 0))
+    {
+        printf("LISTSERVER MESSAGE:)");
+        servers[serverSocket]->name = tokens[1];
+    }
+}
+
 // Process command from client on the server
-void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds, 
+int clientCommand(int clientSocket, fd_set *openSockets, int *maxfds, 
                   char *buffer) 
 {
-  std::vector<std::string> tokens;
-  std::string token;
+    std::vector<std::string> tokens;
+    std::string token;
 
-  // Split command from client into tokens for parsing
-  std::stringstream stream(buffer);
+    // Split command from client into tokens for parsing
+    std::stringstream stream(buffer);
 
-  while(stream >> token)
-      tokens.push_back(token);
+    while(stream >> token)
+        tokens.push_back(token);
 
-  if((tokens[0].compare("CONNECT") == 0) && (tokens.size() == 2))
-  {
-     clients[clientSocket]->name = tokens[1];
-  }
-  // CONNECT SERVER TO ANOTHER SERVER
-  else if((tokens[0].compare("CONNECT") == 0) && (tokens.size() == 3))
-  {
-     connectServer(tokens[1].c_str(), tokens[2].c_str());
-  }
-  else if(tokens[0].compare("LEAVE") == 0)
-  {
-      // Close the socket, and leave the socket handling
-      // code to deal with tidying up clients etc. when
-      // select() detects the OS has torn down the connection.
+    if((tokens[0].compare("CONNECT") == 0) && (tokens.size() == 2))
+    {
+        clients[clientSocket]->name = tokens[1];
+    }
+    // Connect server to another server
+    else if((tokens[0].compare("CONNECT") == 0) && (tokens.size() == 3))
+    {
+        // Get the socket connected to the newly connected server and return it. 
+        int someSock = connectServer(tokens[1].c_str(), tokens[2].c_str());
+
+        // When the server has been connected then send "LISTSERVERS,<FROM GROUP ID>" to the other server
+        // to get its ID and other servers he is connected to.
+        std::string msg = addStartAndEnd("LISTSERVERS,V_GROUP_29"); 
+        send(someSock, msg.c_str(), msg.length(),0);
+
+        return someSock;
+    }
+    else if(tokens[0].compare("LEAVE") == 0)
+    {
+        // Close the socket, and leave the socket handling
+        // code to deal with tidying up clients etc. when
+        // select() detects the OS has torn down the connection.
  
-      closeClient(clientSocket, openSockets, maxfds);
-  }
-  else if(tokens[0].compare("WHO") == 0)
-  {
-     std::cout << "Who is logged on" << std::endl;
-     std::string msg;
+        closeClient(clientSocket, openSockets, maxfds);
+    }
+    else if(tokens[0].compare("WHO") == 0)
+    {
+        std::cout << "Who is logged on" << std::endl;
+        std::string msg;
 
-     for(auto const& names : clients)
-     {
-        msg += names.second->name + ",";
+        for(auto const& names : clients)
+        {
+            msg += names.second->name + ",";
+        }
+        // Reducing the msg length by 1 loses the excess "," - which
+        // granted is totally cheating.
+        send(clientSocket, msg.c_str(), msg.length()-1, 0);
 
-     }
-     // Reducing the msg length by 1 loses the excess "," - which
-     // granted is totally cheating.
-     send(clientSocket, msg.c_str(), msg.length()-1, 0);
+    }
+    // This is slightly fragile, since it's relying on the order
+    // of evaluation of the if statement.
+    else if((tokens[0].compare("MSG") == 0) && (tokens[1].compare("ALL") == 0))
+    {
+        std::string msg;
+        for(auto i = tokens.begin()+2;i != tokens.end();i++) 
+        {
+            msg += *i + " ";
+        }
 
-  }
-  // This is slightly fragile, since it's relying on the order
-  // of evaluation of the if statement.
-  else if((tokens[0].compare("MSG") == 0) && (tokens[1].compare("ALL") == 0))
-  {
-      std::string msg;
-      for(auto i = tokens.begin()+2;i != tokens.end();i++) 
-      {
-          msg += *i + " ";
-      }
-
-      for(auto const& pair : clients)
-      {
-          send(pair.second->sock, msg.c_str(), msg.length(),0);
-      }
-  }
-  else if(tokens[0].compare("MSG") == 0)
-  {
-      for(auto const& pair : clients)
-      {
-          if(pair.second->name.compare(tokens[1]) == 0)
-          {
-              std::string msg;
-              for(auto i = tokens.begin()+2;i != tokens.end();i++) 
-              {
-                  msg += *i + " ";
-              }
-              send(pair.second->sock, msg.c_str(), msg.length(),0);
-          }
-      }
-  }
-  else
-  {
-      std::cout << "Unknown command from client:" << buffer << std::endl;
-  }
+        for(auto const& pair : clients)
+        {
+            send(pair.second->sock, msg.c_str(), msg.length(),0);
+        }
+    }
+    else if(tokens[0].compare("MSG") == 0)
+    {
+        for(auto const& pair : clients)
+        {
+            if(pair.second->name.compare(tokens[1]) == 0)
+            {
+                std::string msg;
+                for(auto i = tokens.begin()+2;i != tokens.end();i++) 
+                {
+                    msg += *i + " ";
+                }
+                send(pair.second->sock, msg.c_str(), msg.length(),0);
+            }
+        }
+    }
+    else
+    {
+        std::cout << "Unknown command from client:" << buffer << std::endl;
+    }
      
+    return -1; // Return -1 if no server connected.
 }
 
 int main(int argc, char* argv[])
@@ -307,7 +390,6 @@ int main(int argc, char* argv[])
     fd_set readSockets;             // Socket list for select()        
     fd_set exceptSockets;           // Exception socket list
     int maxfds;                     // Passed to select() as max fd in set
-    int maxfds2;
     struct sockaddr_in client;
     struct sockaddr_in server;
     socklen_t clientLen;
@@ -337,7 +419,10 @@ int main(int argc, char* argv[])
     }
 
     // Setup socket for server to listen for client connection
-    int listenPort = 6667;
+    int listenPort;
+    std::cout << "Please specify a port to open for client connections: ";
+    std::cin >> listenPort;
+
     listenSock = open_socket(listenPort);
     printf("Listening for client on port: %d\n", listenPort);
     if(listen(listenSock, BACKLOG) < 0)
@@ -360,7 +445,7 @@ int main(int argc, char* argv[])
         readSockets = exceptSockets = openSockets;
         memset(buffer, 0, sizeof(buffer));
 
-        // Look at sockets and see which ones have something to be read()
+        // Look at sockets and see which ones have somePort to be read()
         int n = select(maxfds + 1, &readSockets, NULL, &exceptSockets, NULL);
 
         if(n < 0)
@@ -396,7 +481,7 @@ int main(int argc, char* argv[])
                serverSock = accept(listenServerSock, (struct sockaddr *)&server,
                                    &serverLen);
                printf("accept***\n");
-               // Add new client to the list of open sockets
+               // Add new server to the list of open sockets
                FD_SET(serverSock, &openSockets);
 
                // And update the maximum file descriptor
@@ -409,6 +494,11 @@ int main(int argc, char* argv[])
                n--;
 
                printf("Server connected on server: %d\n", serverSock);
+                /*
+               // Send accepted message to the server with your groupID
+               std::string msg = "ACCEPTED,V_GROUP_29"; // WE STILL NEED TO SEND START AND END CHAR
+               send(serverSock, msg.c_str(), msg.length(), 0);
+                */
             }
             // Now check for commands from clients
             while(n-- > 0)
@@ -429,40 +519,55 @@ int main(int argc, char* argv[])
 
                       }
                       // We don't check for -1 (nothing received) because select()
-                      // only triggers if there is something on the socket for us.
+                      // only triggers if there is somePort on the socket for us.
                       else
                       {
-                          std::cout << buffer << std::endl;
-                          clientCommand(client->sock, &openSockets, &maxfds, 
+                            std::cout << buffer << std::endl;
+                            int retSock;
+                            retSock = clientCommand(client->sock, &openSockets, &maxfds, 
                                         buffer);
-                      }
-                  }
+                            // If the client command was CONNECT <IP> <PORT> then is should return a socket.
+                            if(retSock != -1)
+                            {
+                                FD_SET(retSock, &openSockets);
+
+                                // And update the maximum file descriptor
+                                maxfds = std::max(maxfds, retSock);
+
+                                // create a new client to store information.
+                                servers[retSock] = new Server(retSock);
+
+                                // Decrement the number of sockets waiting to be dealt with
+                                n--;
+                            }
+                        }
+                    }
                }
                for(auto const& pair : servers)
                {
-                  Server *server = pair.second;
+                    Server *server = pair.second;
 
-                  if(FD_ISSET(server->sock, &readSockets))
-                  {
-                      // recv() == 0 means client has closed connection
-                      if(recv(server->sock, buffer, sizeof(buffer), MSG_DONTWAIT) == 0)
-                      {
-                          printf("Server closed connection: %d", server->sock);
-                          close(server->sock);      
+                    if(FD_ISSET(server->sock, &readSockets))
+                    {
+                        // recv() == 0 means client has closed connection
+                        if(recv(server->sock, buffer, sizeof(buffer), MSG_DONTWAIT) == 0)
+                        {
+                            printf("Server closed connection: %d", server->sock);
+                            close(server->sock);      
 
-                          closeClient(server->sock, &openSockets, &maxfds);
-
-                      }
-                      // We don't check for -1 (nothing received) because select()
-                      // only triggers if there is something on the socket for us.
-                      else
-                      {
-                          std::cout << buffer << std::endl;
-                          clientCommand(server->sock, &openSockets, &maxfds, 
+                            closeClient(server->sock, &openSockets, &maxfds);
+                        }
+                        // We don't check for -1 (nothing received) because select()
+                        // only triggers if there is somePort on the socket for us.
+                        else
+                        {
+                            std::cout << buffer << std::endl;
+                            serverCommand(server->sock, &openSockets, &maxfds, 
                                         buffer);
-                      }
-                  }
-               }
+                            
+                        }
+                    }
+                }
             }
         }
     }
