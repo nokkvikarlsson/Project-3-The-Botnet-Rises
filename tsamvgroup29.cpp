@@ -59,7 +59,9 @@ class Server
 {
   public:
     int sock;              // socket of server connection
-    std::string name;           // Limit length of name of client's user
+    std::string name;      // Group ID of server user
+    std::string ip;        // IP address of server
+    int port;              // Port Number of server
 
     Server(int socket) : sock(socket){} 
 
@@ -77,7 +79,7 @@ std::map<int, Client*> clients; // Lookup table for per Client information
 std::map<int, Server*> servers; // Lookup table for per Server information
 
 bool finished;
-int listenSock;                 // Socket for connections from client
+int listenClientSock;                 // Socket for connections from client
 int listenServerSock;           // Socket for connection from other servers
 int clientSock;                 // Socket for connecting client
 int serverSock;                 // Socket for connecting server
@@ -91,6 +93,7 @@ socklen_t serverLen;
 char buffer[1025];              // buffer for reading from clients
 int maxfds;                     // Passed to select() as max fd in set
 int n = 0;
+int serverPort;                 // Port that is used to listen for server connections.
 
 // Open socket for specified port.
 //
@@ -192,14 +195,14 @@ std::string addStartAndEnd(std::string msg)
 
 void connectServer(const char * ipAddr, const char * portNo)
 {
-   struct addrinfo hints, *svr;              // Network host entry for server
-   struct sockaddr_in serv_addr;             // Socket address for server
-   int serverSocket;                         // Socket used for server 
-   int nwrite;                               // No. bytes written to server
-   char buffer[1025];                        // buffer for writing to server
-   bool finished;                   
-   int set = 1;                              // Toggle for setsockopt
-
+    struct addrinfo hints, *svr;              // Network host entry for server
+    struct sockaddr_in serv_addr;             // Socket address for server
+    int serverSocket;                         // Socket used for server 
+    int nwrite;                               // No. bytes written to server
+    char buffer[1025];                        // buffer for writing to server
+    bool finished;                   
+    int set = 1;                              // Toggle for setsockopt
+    struct sockaddr_in local;
     hints.ai_family   = AF_INET;            // IPv4 only addresses
     hints.ai_socktype = SOCK_STREAM;
 
@@ -229,6 +232,16 @@ void connectServer(const char * ipAddr, const char * portNo)
     {
         printf("Failed to set SO_REUSEADDR for port %s\n", portNo);
         perror("setsockopt failed: ");
+    }
+
+    // Bind the socket to the source port.
+    memset(&local, 0, sizeof(local)); 
+    local.sin_family = AF_INET;
+    local.sin_addr.s_addr = (INADDR_ANY);
+    local.sin_port = htons(serverPort);
+
+    if(bind(serverSocket, (struct sockaddr*)&local, sizeof(local)) < 0){
+        perror("bind failed");
     }
 
     if(connect(serverSocket, (struct sockaddr *)&serv_addr, sizeof(serv_addr) )< 0)
@@ -293,9 +306,6 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds,
     // Split command from client into tokens for parsing
     std::stringstream stream(buffer);
 
-    //while(stream >> token)
-      //  tokens.push_back(token);
-    
     while(std::getline(stream, token, ',')) {
         tokens.push_back(token);
     }
@@ -337,10 +347,6 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
     {
         // Get the socket connected to the newly connected server and return it. 
         connectServer(tokens[1].c_str(), tokens[2].c_str());
-
-        // When the server has been connected then send "LISTSERVERS,<FROM GROUP ID>" to the other server
-        // to get its ID and other servers he is connected to.
-        
     }
     else if(tokens[0].compare("LEAVE") == 0)
     {
@@ -362,7 +368,6 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
         // Reducing the msg length by 1 loses the excess "," - which
         // granted is totally cheating.
         send(clientSocket, msg.c_str(), msg.length()-1, 0);
-
     }
     // This is slightly fragile, since it's relying on the order
     // of evaluation of the if statement.
@@ -402,7 +407,6 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
 
 int main(int argc, char* argv[])
 {
-
     if(argc != 2)
     {
         printf("Usage: chat_server <ip port>\n");
@@ -410,11 +414,12 @@ int main(int argc, char* argv[])
     }
 
     // Setup a socket for server to listen for other servers
-    listenServerSock = open_socket(atoi(argv[1]));
-    printf("Listening for servers on port: %d\n", atoi(argv[1]));
+    serverPort = atoi(argv[1]);
+    listenServerSock = open_socket(serverPort);
+    printf("Listening for servers on port: %d\n", serverPort);
     if(listen(listenServerSock, BACKLOG) < 0)
     {
-        printf("Listen failed on port %s\n", argv[1]);
+        printf("Listen failed on port %d\n", serverPort);
         exit(0);
     }
     else 
@@ -430,9 +435,9 @@ int main(int argc, char* argv[])
     std::cout << "Please specify a port to open for client connections: ";
     std::cin >> listenPort;
 
-    listenSock = open_socket(listenPort);
+    listenClientSock = open_socket(listenPort);
     printf("Listening for client on port: %d\n", listenPort);
-    if(listen(listenSock, BACKLOG) < 0)
+    if(listen(listenClientSock, BACKLOG) < 0)
     {
         printf("Listen failed on port %d\n", listenPort);
         exit(0);
@@ -440,8 +445,8 @@ int main(int argc, char* argv[])
     else
     // Add listen socket to socket set we are monitoring
     {
-        FD_SET(listenSock, &openSockets);
-        maxfds = std::max(listenSock, listenServerSock);
+        FD_SET(listenClientSock, &openSockets);
+        maxfds = std::max(listenClientSock, listenServerSock);
     }
 
     finished = false;
@@ -463,9 +468,9 @@ int main(int argc, char* argv[])
         else
         {
             // First, accept  any new connections to the server on the listening socket
-            if(FD_ISSET(listenSock, &readSockets))
+            if(FD_ISSET(listenClientSock, &readSockets))
             {
-               clientSock = accept(listenSock, (struct sockaddr *)&client,
+               clientSock = accept(listenClientSock, (struct sockaddr *)&client,
                                    &clientLen);
                printf("accept***\n");
                // Add new client to the list of open sockets
@@ -485,22 +490,46 @@ int main(int argc, char* argv[])
             // Second, accept any new connections to the server from other serveras from the listen Server socket
             if(FD_ISSET(listenServerSock, &readSockets))
             {
-               serverSock = accept(listenServerSock, (struct sockaddr *)&server,
-                                   &serverLen);
-               printf("accept***\n");
-               // Add new server to the list of open sockets
-               FD_SET(serverSock, &openSockets);
+                serverSock = accept(listenServerSock, (struct sockaddr *)&server,
+                                    &serverLen);
+                printf("accept***\n");
+                // Add new server to the list of open sockets
+                FD_SET(serverSock, &openSockets);
 
-               // And update the maximum file descriptor
-               maxfds = std::max(maxfds, serverSock);
+                // And update the maximum file descriptor
+                maxfds = std::max(maxfds, serverSock);
 
-               // create a new client to store information.
-               servers[serverSock] = new Server(serverSock);
+                // create a new client to store information.
+                servers[serverSock] = new Server(serverSock);
 
-               // Decrement the number of sockets waiting to be dealt with
-               n--;
+                // Decrement the number of sockets waiting to be dealt with
+                n--;
 
-               printf("Server connected on server: %d\n", serverSock);
+                // Get the IP and Port of the newly connected server.
+                socklen_t len;
+                struct sockaddr_storage addr;
+                char ipstr[INET6_ADDRSTRLEN];
+                int port;
+                len = sizeof addr;
+                if (getpeername(serverSock, (struct sockaddr*)&addr, &len) == 0)
+                {
+                    struct sockaddr_in *s = (struct sockaddr_in *)&addr;
+                    port = ntohs(s->sin_port);
+                    inet_ntop(AF_INET, &s->sin_addr, ipstr, sizeof ipstr);
+                } 
+                else
+                {
+                    perror("getpeername failed");
+                }
+            
+
+                printf("Peer IP address: %s\n", ipstr);
+                printf("Peer port      : %d\n", port);
+
+                servers[serverSock]->ip = ipstr;
+                servers[serverSock]->port = port;
+
+                printf("Server connected on server: %d\n", serverSock);
             }
             // Now check for commands from clients
             while(n-- > 0)
@@ -527,7 +556,6 @@ int main(int argc, char* argv[])
                             std::cout << buffer << std::endl;
                             clientCommand(client->sock, &openSockets, &maxfds, 
                                         buffer);
-                            // If the client command was CONNECT <IP> <PORT> then is should return a socket.
                         }
                     }
                }
