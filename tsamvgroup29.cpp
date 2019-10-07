@@ -186,8 +186,8 @@ std::string addStartAndEnd(std::string msg)
     std::string end = "";
     std::string retMsg = "";
 
-    start = (char)0x01;
-    end = (char)0x04;
+    start = char(0x01);
+    end = char(0x04);
     retMsg = start + msg + end;
 
     return retMsg;
@@ -202,7 +202,6 @@ void connectServer(const char * ipAddr, const char * portNo)
     char buffer[1025];                        // buffer for writing to server
     bool finished;                   
     int set = 1;                              // Toggle for setsockopt
-    struct sockaddr_in local;
     hints.ai_family   = AF_INET;            // IPv4 only addresses
     hints.ai_socktype = SOCK_STREAM;
 
@@ -234,16 +233,6 @@ void connectServer(const char * ipAddr, const char * portNo)
         perror("setsockopt failed: ");
     }
 
-    // Bind the socket to the source port.
-    memset(&local, 0, sizeof(local)); 
-    local.sin_family = AF_INET;
-    local.sin_addr.s_addr = (INADDR_ANY);
-    local.sin_port = htons(serverPort);
-
-    if(bind(serverSocket, (struct sockaddr*)&local, sizeof(local)) < 0){
-        perror("bind failed");
-    }
-
     if(connect(serverSocket, (struct sockaddr *)&serv_addr, sizeof(serv_addr) )< 0)
     {
         printf("Failed to open socket to server: %s\n", ipAddr);
@@ -267,6 +256,7 @@ void connectServer(const char * ipAddr, const char * portNo)
     n--;
 
     std::string msg = addStartAndEnd("LISTSERVERS,V_GROUP_29"); 
+
     send(serverSocket, msg.c_str(), msg.length(),0);
 }
 
@@ -300,27 +290,29 @@ void closeClient(int clientSocket, fd_set *openSockets, int *maxfds)
 void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds, 
                   char *buffer)
 {
+    std::cout << "THIS IS THE BUFFER IN SERVER COMMANDS: " << buffer << std::endl;
     std::vector<std::string> tokens;
+    std::string strBuffer;
     std::string token;
 
-    // Split command from client into tokens for parsing
-    std::stringstream stream(buffer);
+    std::string s = buffer;
+    std::string delimiter = ",";
 
-    while(std::getline(stream, token, ',')) {
+    size_t pos = 0;
+    while ((pos = s.find(delimiter)) != std::string::npos) {
+        token = s.substr(0, pos);
         tokens.push_back(token);
+        std::cout << token << std::endl;
+        s.erase(0, pos + delimiter.length());
     }
+    tokens.push_back(s);
 
-    std::cout << "THIS IS THE BUFFER: " << buffer << std::endl;
-    std::cout << "THIS IS THE TOKEN 0: " << token[0] << std::endl;
     char ip[32];
     get_local_ip(ip);
-
-    std::cout << "THIS IS THE IP: " << ip << std::endl;
 
     // If the server receives the ACCEPTED message
     if((tokens[0].compare("LISTSERVERS") == 0))
     {
-        printf("LISTSERVER MESSAGE:)");
         servers[serverSocket]->name = tokens[1];
     }
 }
@@ -522,7 +514,6 @@ int main(int argc, char* argv[])
                     perror("getpeername failed");
                 }
             
-
                 printf("Peer IP address: %s\n", ipstr);
                 printf("Peer port      : %d\n", port);
 
@@ -540,19 +531,19 @@ int main(int argc, char* argv[])
 
                   if(FD_ISSET(client->sock, &readSockets))
                   {
-                      // recv() == 0 means client has closed connection
-                      if(recv(client->sock, buffer, sizeof(buffer), MSG_DONTWAIT) == 0)
-                      {
-                          printf("Client closed connection: %d", client->sock);
-                          close(client->sock);      
+                        // recv() == 0 means client has closed connection
+                        if(recv(client->sock, buffer, sizeof(buffer), MSG_DONTWAIT) == 0)
+                        {
+                            printf("Client closed connection: %d", client->sock);
+                            close(client->sock);      
 
-                          closeClient(client->sock, &openSockets, &maxfds);
+                            closeClient(client->sock, &openSockets, &maxfds);
 
-                      }
-                      // We don't check for -1 (nothing received) because select()
-                      // only triggers if there is somePort on the socket for us.
-                      else
-                      {
+                        }
+                        // We don't check for -1 (nothing received) because select()
+                        // only triggers if there is somePort on the socket for us.
+                        else
+                        {
                             std::cout << buffer << std::endl;
                             clientCommand(client->sock, &openSockets, &maxfds, 
                                         buffer);
@@ -577,10 +568,39 @@ int main(int argc, char* argv[])
                         // only triggers if there is somePort on the socket for us.
                         else
                         {
-                            std::cout << buffer << std::endl;
-                            serverCommand(server->sock, &openSockets, &maxfds, 
-                                        buffer);
+                            std::string strBuffer = buffer;
                             
+                            if(strBuffer.find(0x01) == std::string::npos)
+                            {
+                                perror("NO start character found");
+                            }
+                            if(strBuffer.find(0x04) == std::string::npos)
+                            {
+                                perror("NO end character found");
+                            }
+                            // If end and start character was found then send the message
+                            if(strBuffer.find(0x01) != std::string::npos && strBuffer.find(0x04) != std::string::npos)
+                            {
+                                // Extract the message between the start and the end characters.
+                                unsigned start = strBuffer.find(char(0x01)) + 1;
+                                unsigned end = strBuffer.find(char(0x04));
+                                const char * msg = strBuffer.substr(start,end-start).c_str();
+                                std::string testString = msg;
+
+                                std::cout << "THIS IS THE msg :)))" << msg << std::endl;
+
+                                if(testString.find(0x01) != std::string::npos)
+                                {
+                                    perror("Start character found after removal");
+                                }
+                                if(testString.find(0x04) != std::string::npos)
+                                {
+                                    perror("End character found after removal");
+                                }
+
+                                serverCommand(server->sock, &openSockets, &maxfds, 
+                                            (char*)msg);
+                            }
                         }
                     }
                 }
