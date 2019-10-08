@@ -101,6 +101,7 @@ int maxfds;                     // Passed to select() as max fd in set
 int n = 0;
 int serverPort;                 // Port that is used to listen for server connections.
 std::string name = "V_GROUP_29";               // Stores group ID
+char myIP[32];
 
 // Open socket for specified port.
 //
@@ -206,7 +207,7 @@ void connectServer(const char * ipAddr, const char * portNo)
     struct sockaddr_in serv_addr;             // Socket address for server
     int serverSocket;                         // Socket used for server 
     int nwrite;                               // No. bytes written to server
-    char buffer[1025];                        // buffer for writing to server
+    char buffer[5121];                        // buffer for writing to server
     bool finished;                   
     int set = 1;                              // Toggle for setsockopt
     hints.ai_family   = AF_INET;            // IPv4 only addresses
@@ -293,16 +294,12 @@ void closeClient(int clientSocket, fd_set *openSockets, int *maxfds)
      FD_CLR(clientSocket, openSockets);
 }
 
-
-// Process commands from servers on server.
-void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds, 
-                  char *buffer)
+// Parsers buffer into tokens slpit by delimiter.
+std::vector<std::string> parseString(std::string delimiter, char *buffer)
 {
     std::vector<std::string> tokens;
-    std::string strBuffer;
     std::string token;
     std::string s = buffer;
-    std::string delimiter = ",";
 
     // Split command from server into tokens for parsing
     size_t pos = 0;
@@ -313,17 +310,26 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds,
     }
     tokens.push_back(s);
 
-    std::cout << std::endl << "I AM IN SERVER COMMANDS" << std::endl;
+    return tokens;
+}
 
+// Process commands from servers on server.
+void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds, 
+                  char *buffer)
+{
+    std::string strBuffer = buffer; // Store the buffer as a string.
+    std::cout << std::endl << "Message recieved: " << buffer << std::endl;
+    // Parse the string into tokens using "," as a delimiter.
+    std::vector<std::string> tokens = parseString(",", buffer);
+
+    // Sends 1-hop connected servers back to the serverSocket.
     if((tokens[0].compare("LISTSERVERS") == 0) && (tokens.size() == 2))
     {
         // Add the ID of the server to the map.
         servers[serverSocket]->name = tokens[1];
 
         // Get the ip and the port number where we listeen for server connections to our server.
-        char ip[32];
-        get_local_ip(ip);
-        std::string strIP = ip;
+        std::string strIP = myIP;
         std::string strPort = std::to_string(serverPort);
         
         // Make the message that conatains every 1-hop connected server.
@@ -334,7 +340,10 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds,
         for(auto const& pair : servers)
         {
             Server *server = pair.second;
-
+            /*server->name = "V_GROUP_234";
+            server->ip = "192.392.203.33";
+            server->port = 4574;
+            */
             // Don't add servers that the servers doesnt have enough information about.
             if(server->name != "" && server->ip != "" && server->port != -1)
             {
@@ -342,21 +351,71 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds,
             }
         }
 
-        std::cout << "THIS IS MSG: " << msg << std::endl;
+        //std::cout << "THIS IS MSG: " << msg << std::endl;
 
         // Add start and end characters and send msg back to the server.
         msg = addStartAndEnd(msg);
         send(serverSocket, msg.c_str(), msg.length(), 0);
     }
+    // Processes a list of servers and tries to connect to them.
     else if((tokens[0].compare("SERVERS") == 0) && (tokens.size() >= 4))
     {
+        // Save the first server in the message because that's the server that we connected to.
         servers[serverSocket]->name = tokens[1];
         servers[serverSocket]->ip = tokens[2];
         servers[serverSocket]->port = atoi(tokens[3].c_str());
 
-        std::cout << "NAME: " << servers[serverSocket]->name << std::endl;
+        std::vector<std::string> smallerTokens;
+        std::vector<Server> serversToConnect; // Stores information of servers that we will try to connect to.
+
+        // Parse the string into tokens with ";" as a delimeter.
+        tokens = parseString(";", (char *)strBuffer.c_str());
+
+        // TODO: CHECK FOR YOURSELF, CHECK IF YOU ARE ALREADY CONNECTED TO THAT DUDE
+
+        // Loop over the tokens and parse them into smaller tokens to seperate ip and port information of the listed servers.
+        for(int i = 1; i < tokens.size(); i++)
+        {
+            char * miniBuffer = (char *)tokens[i].c_str(); // A parsed token on char * form.
+            smallerTokens = parseString(",", miniBuffer); // Parse into smaller tokens by the delimitor ",".
+            //std::cout << "Printing  Token number " << i << ": " << tokens[i] << std::endl;
+            // Make sure that the token is not empty.
+            if(tokens[i] != "")
+            {
+                Server serv(-0); // Used to store server information during parsing.
+                // Loop over the smaller tokens and parse out the relevant information of them.
+                for(int j = 0; j < smallerTokens.size(); j++)
+                {
+                    //std::cout << "Printing  smallerToken number " << j << ": " << smallerTokens[j] << std::endl;
+                    // if j == 1 then it's an ip address.
+                    if(j == 1) 
+                    {
+                        serv.ip = smallerTokens[j];
+                    }
+                    // if j == then it's a port number.
+                    else if (j == 2) 
+                    {
+                        serv.port = atoi(smallerTokens[j].c_str());
+                    }
+                }
+                // Make sure that ip or port is not empty, and it's the server.
+                if(serv.ip != "" && serv.port != -1 && (serverPort != serv.port && myIP != serv.ip))
+                {
+                    // Add the serv information to the vector.
+                    serversToConnect.push_back(serv);
+                }
+            }
+        }
+        // loop over serversToConnect and try to connect to the servers.
+        for(int i = 0; i < serversToConnect.size(); i++)
+        {
+            connectServer(serversToConnect[i].ip.c_str(), std::to_string(serversToConnect[i].port).c_str());
+        }
+        
+        /*std::cout << "NAME: " << servers[serverSocket]->name << std::endl;
         std::cout << "IP: " << servers[serverSocket]->ip << std::endl;
         std::cout << "PORT: " << servers[serverSocket]->port << std::endl;
+        */
     }
 }
 
@@ -442,6 +501,8 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
 
 int main(int argc, char* argv[])
 {
+    get_local_ip(myIP);
+
     if(argc != 2)
     {
         printf("Usage: chat_server <ip port>\n");
@@ -540,6 +601,11 @@ int main(int argc, char* argv[])
                 // Decrement the number of sockets waiting to be dealt with
                 n--;
 
+                std::string msg = "LISTSERVERS," + name;
+                msg = addStartAndEnd(msg);
+
+                send(serverSock, msg.c_str(), msg.length(),0);
+
                 printf("Server connected on the port: %d\n", serverPort);
             }
             // Now check for commands from clients
@@ -589,15 +655,7 @@ int main(int argc, char* argv[])
                         else
                         {
                             std::string strBuffer = buffer;
-                            
-                            if(strBuffer.find(0x01) == std::string::npos)
-                            {
-                                perror("NO start character found");
-                            }
-                            if(strBuffer.find(0x04) == std::string::npos)
-                            {
-                                perror("NO end character found");
-                            }
+
                             // If end and start character was found then send the message
                             if(strBuffer.find(0x01) != std::string::npos && strBuffer.find(0x04) != std::string::npos)
                             {
