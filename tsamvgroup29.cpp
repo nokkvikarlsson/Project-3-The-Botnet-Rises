@@ -63,7 +63,13 @@ class Server
     std::string ip;        // IP address of server
     int port;              // Port Number of server
 
-    Server(int socket) : sock(socket){} 
+    Server(int socket)
+    {
+        sock = socket;
+        name = "";
+        ip = "";
+        port = -1;
+    } 
 
     ~Server(){}            // Virtual destructor defined for base class
 };
@@ -94,6 +100,7 @@ char buffer[1025];              // buffer for reading from clients
 int maxfds;                     // Passed to select() as max fd in set
 int n = 0;
 int serverPort;                 // Port that is used to listen for server connections.
+std::string name = "V_GROUP_29";               // Stores group ID
 
 // Open socket for specified port.
 //
@@ -255,7 +262,8 @@ void connectServer(const char * ipAddr, const char * portNo)
     // Decrement the number of sockets waiting to be dealt with
     n--;
 
-    std::string msg = addStartAndEnd("LISTSERVERS,V_GROUP_29"); 
+    std::string msg = "LISTSERVERS," + name;
+    msg = addStartAndEnd(msg);
 
     send(serverSocket, msg.c_str(), msg.length(),0);
 }
@@ -290,30 +298,65 @@ void closeClient(int clientSocket, fd_set *openSockets, int *maxfds)
 void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds, 
                   char *buffer)
 {
-    std::cout << "THIS IS THE BUFFER IN SERVER COMMANDS: " << buffer << std::endl;
     std::vector<std::string> tokens;
     std::string strBuffer;
     std::string token;
-
     std::string s = buffer;
     std::string delimiter = ",";
 
+    // Split command from server into tokens for parsing
     size_t pos = 0;
     while ((pos = s.find(delimiter)) != std::string::npos) {
         token = s.substr(0, pos);
         tokens.push_back(token);
-        std::cout << token << std::endl;
         s.erase(0, pos + delimiter.length());
     }
     tokens.push_back(s);
 
-    char ip[32];
-    get_local_ip(ip);
+    std::cout << std::endl << "I AM IN SERVER COMMANDS" << std::endl;
 
-    // If the server receives the ACCEPTED message
-    if((tokens[0].compare("LISTSERVERS") == 0))
+    if((tokens[0].compare("LISTSERVERS") == 0) && (tokens.size() == 2))
+    {
+        // Add the ID of the server to the map.
+        servers[serverSocket]->name = tokens[1];
+
+        // Get the ip and the port number where we listeen for server connections to our server.
+        char ip[32];
+        get_local_ip(ip);
+        std::string strIP = ip;
+        std::string strPort = std::to_string(serverPort);
+        
+        // Make the message that conatains every 1-hop connected server.
+        std::string msg = "";
+        msg = "SERVERS," + name + "," + strIP + "," + strPort + ";";
+
+        // Add server from the servers map to msg and send it to the server that sent the LISTSERVERS command.
+        for(auto const& pair : servers)
+        {
+            Server *server = pair.second;
+
+            // Don't add servers that the servers doesnt have enough information about.
+            if(server->name != "" && server->ip != "" && server->port != -1)
+            {
+                msg += server->name + "," + server->ip + "," + std::to_string(server->port) + ";";
+            }
+        }
+
+        std::cout << "THIS IS MSG: " << msg << std::endl;
+
+        // Add start and end characters and send msg back to the server.
+        msg = addStartAndEnd(msg);
+        send(serverSocket, msg.c_str(), msg.length(), 0);
+    }
+    else if((tokens[0].compare("SERVERS") == 0) && (tokens.size() >= 4))
     {
         servers[serverSocket]->name = tokens[1];
+        servers[serverSocket]->ip = tokens[2];
+        servers[serverSocket]->port = atoi(tokens[3].c_str());
+
+        std::cout << "NAME: " << servers[serverSocket]->name << std::endl;
+        std::cout << "IP: " << servers[serverSocket]->ip << std::endl;
+        std::cout << "PORT: " << servers[serverSocket]->port << std::endl;
     }
 }
 
@@ -477,7 +520,7 @@ int main(int argc, char* argv[])
                // Decrement the number of sockets waiting to be dealt with
                n--;
 
-               printf("Client connected on server: %d\n", clientSock);
+               printf("Client connected on client port: %d\n", clientSock);
             }
             // Second, accept any new connections to the server from other serveras from the listen Server socket
             if(FD_ISSET(listenServerSock, &readSockets))
@@ -497,30 +540,7 @@ int main(int argc, char* argv[])
                 // Decrement the number of sockets waiting to be dealt with
                 n--;
 
-                // Get the IP and Port of the newly connected server.
-                socklen_t len;
-                struct sockaddr_storage addr;
-                char ipstr[INET6_ADDRSTRLEN];
-                int port;
-                len = sizeof addr;
-                if (getpeername(serverSock, (struct sockaddr*)&addr, &len) == 0)
-                {
-                    struct sockaddr_in *s = (struct sockaddr_in *)&addr;
-                    port = ntohs(s->sin_port);
-                    inet_ntop(AF_INET, &s->sin_addr, ipstr, sizeof ipstr);
-                } 
-                else
-                {
-                    perror("getpeername failed");
-                }
-            
-                printf("Peer IP address: %s\n", ipstr);
-                printf("Peer port      : %d\n", port);
-
-                servers[serverSock]->ip = ipstr;
-                servers[serverSock]->port = port;
-
-                printf("Server connected on server: %d\n", serverSock);
+                printf("Server connected on the port: %d\n", serverPort);
             }
             // Now check for commands from clients
             while(n-- > 0)
@@ -585,18 +605,6 @@ int main(int argc, char* argv[])
                                 unsigned start = strBuffer.find(char(0x01)) + 1;
                                 unsigned end = strBuffer.find(char(0x04));
                                 const char * msg = strBuffer.substr(start,end-start).c_str();
-                                std::string testString = msg;
-
-                                std::cout << "THIS IS THE msg :)))" << msg << std::endl;
-
-                                if(testString.find(0x01) != std::string::npos)
-                                {
-                                    perror("Start character found after removal");
-                                }
-                                if(testString.find(0x04) != std::string::npos)
-                                {
-                                    perror("End character found after removal");
-                                }
 
                                 serverCommand(server->sock, &openSockets, &maxfds, 
                                             (char*)msg);
