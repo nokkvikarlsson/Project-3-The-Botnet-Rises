@@ -249,7 +249,7 @@ void connectServer(const char * ipAddr, const char * portNo)
     }
     else
     {
-        printf("Server Connected");
+        std::cout << "Server Connected" << std::endl;
     }
 
     FD_SET(serverSocket, &openSockets);
@@ -318,13 +318,14 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds,
                   char *buffer)
 {
     std::string strBuffer = buffer; // Store the buffer as a string.
-    std::cout << std::endl << "Message recieved: " << buffer << std::endl;
+    std::cout << "Message recieved: " << buffer << std::endl;
     // Parse the string into tokens using "," as a delimiter.
     std::vector<std::string> tokens = parseString(",", buffer);
 
     // Sends 1-hop connected servers back to the serverSocket.
     if((tokens[0].compare("LISTSERVERS") == 0) && (tokens.size() == 2))
     {
+        std::cout << "I AM HANDLING LIST SERVERS" << std::endl;
         // Add the ID of the server to the map.
         servers[serverSocket]->name = tokens[1];
 
@@ -340,10 +341,6 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds,
         for(auto const& pair : servers)
         {
             Server *server = pair.second;
-            /*server->name = "V_GROUP_234";
-            server->ip = "192.392.203.33";
-            server->port = 4574;
-            */
             // Don't add servers that the servers doesnt have enough information about.
             if(server->name != "" && server->ip != "" && server->port != -1)
             {
@@ -355,24 +352,39 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds,
 
         // Add start and end characters and send msg back to the server.
         msg = addStartAndEnd(msg);
+        unsigned int microseconds = 100000;
+        usleep(microseconds);
         send(serverSocket, msg.c_str(), msg.length(), 0);
     }
     // Processes a list of servers and tries to connect to them.
     else if((tokens[0].compare("SERVERS") == 0) && (tokens.size() >= 4))
     {
+        std::cout << "I AM HANDLING **SERVERS**" << std::endl;
         // Save the first server in the message because that's the server that we connected to.
         servers[serverSocket]->name = tokens[1];
         servers[serverSocket]->ip = tokens[2];
         servers[serverSocket]->port = atoi(tokens[3].c_str());
 
+        std::cout << "*****Printing out connected servers*****" << std::endl;
+        for(auto const& pair : servers)
+        {   
+            Server *server = pair.second;
+
+            std::cout << "-----------------------" << std::endl;
+            std::cout << "Name: " << server->name << std::endl;
+            std::cout << "IP: " << server->ip << std::endl;
+            std::cout << "Port: " << server->port << std::endl;
+            std::cout << "-----------------------" << std::endl;
+        }
+
         std::vector<std::string> smallerTokens;
         std::vector<Server> serversToConnect; // Stores information of servers that we will try to connect to.
-
+        
         // Parse the string into tokens with ";" as a delimeter.
         tokens = parseString(";", (char *)strBuffer.c_str());
 
         // TODO: CHECK FOR YOURSELF, CHECK IF YOU ARE ALREADY CONNECTED TO THAT DUDE
-
+        // BY checking if you have their name in your map
         // Loop over the tokens and parse them into smaller tokens to seperate ip and port information of the listed servers.
         for(int i = 1; i < tokens.size(); i++)
         {
@@ -387,6 +399,11 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds,
                 for(int j = 0; j < smallerTokens.size(); j++)
                 {
                     //std::cout << "Printing  smallerToken number " << j << ": " << smallerTokens[j] << std::endl;
+                    // if j == 0 then it's the name of the server.
+                    if(j == 0)
+                    {
+                        serv.name = smallerTokens[j]; 
+                    }
                     // if j == 1 then it's an ip address.
                     if(j == 1) 
                     {
@@ -398,18 +415,36 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds,
                         serv.port = atoi(smallerTokens[j].c_str());
                     }
                 }
-                // Make sure that ip or port is not empty, and it's the server.
-                if(serv.ip != "" && serv.port != -1 && (serverPort != serv.port && myIP != serv.ip))
+                // Make sure that ip or port is not empty, and it's not our server.
+                if(serv.ip != "" && serv.port != -1 && (serverPort != serv.port && name != serv.name))
                 {
-                    // Add the serv information to the vector.
-                    serversToConnect.push_back(serv);
+                    // Check if we already have a connection to this server.
+                    bool add = true;
+                    for(auto const& pair : servers)
+                    {
+                        Server *server = pair.second;
+
+                        // If name is found in the map don't try to connect to it's associated server.
+                        if(server->name == serv.name)
+                        {
+                            add = false;
+                        }
+                    }
+                    if(add)
+                    {
+                        // Add the serv information to the vector.
+                        serversToConnect.push_back(serv);
+                    }
                 }
             }
         }
+        
         // loop over serversToConnect and try to connect to the servers.
         for(int i = 0; i < serversToConnect.size(); i++)
         {
+            std::cout << "BEFORE" << std::endl;
             connectServer(serversToConnect[i].ip.c_str(), std::to_string(serversToConnect[i].port).c_str());
+            std::cout << "AFTER" << std::endl;
         }
         
         /*std::cout << "NAME: " << servers[serverSocket]->name << std::endl;
@@ -432,15 +467,44 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
     while(stream >> token)
         tokens.push_back(token);
 
-    if((tokens[0].compare("CONNECT") == 0) && (tokens.size() == 2))
+/*    if((tokens[0].compare("CONNECT") == 0) && (tokens.size() == 2))
     {
         clients[clientSocket]->name = tokens[1];
     }
+*/
     // Connect server to another server
-    else if((tokens[0].compare("CONNECT") == 0) && (tokens.size() == 3))
+    if((tokens[0].compare("CONNECT") == 0) && (tokens.size() == 3))
     {
         // Get the socket connected to the newly connected server and return it. 
         connectServer(tokens[1].c_str(), tokens[2].c_str());
+    }
+    else if((tokens[0].compare("LISTSERVERS") == 0) && (tokens.size() == 1))
+    {
+        // Get the ip and the port number where we listeen for server connections to our server.
+        std::string strIP = myIP;
+        std::string strPort = std::to_string(serverPort);
+        
+        // Make the message that conatains every 1-hop connected server.
+        std::string msg = "";
+
+        // Add server from the servers map to msg and send it to the server that sent the LISTSERVERS command.
+        for(auto const& pair : servers)
+        {
+            Server *server = pair.second;
+            // Don't add servers that the servers doesnt have enough information about.
+            if(server->name != "" && server->ip != "" && server->port != -1)
+            {
+                msg += server->name + "," + server->ip + "," + std::to_string(server->port) + ";";
+            }
+        }
+
+        if(msg == "")
+        {
+            msg = "No servers are connected to the server :(";
+        }
+
+        // Send the message back to the client
+        send(clientSocket, msg.c_str(), msg.length(), 0);
     }
     else if(tokens[0].compare("LEAVE") == 0)
     {
@@ -530,6 +594,7 @@ int main(int argc, char* argv[])
     int listenPort;
     std::cout << "Please specify a port to open for client connections: ";
     std::cin >> listenPort;
+    name = name + "_" + std::to_string(serverPort); // REMOVE THIS, THIS IS ONLY FOR LOCAL TESTING.
 
     listenClientSock = open_socket(listenPort);
     printf("Listening for client on port: %d\n", listenPort);
