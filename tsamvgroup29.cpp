@@ -268,6 +268,8 @@ void connectServer(const char * ipAddr, const char * portNo)
     msg = addStartAndEnd(msg);
 
     send(serverSocket, msg.c_str(), msg.length(),0);
+    //unsigned int microseconds = 1000000;
+    //usleep(microsecond
 }
 
 // Close a client's connection, remove it from the client list, and
@@ -326,21 +328,16 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds,
     // Sends 1-hop connected servers back to the serverSocket.
     if((tokens[0].compare("LISTSERVERS") == 0) && (tokens.size() == 2))
     {
-        std::cout << "I AM HANDLING LIST SERVERS" << std::endl;
         // Add the ID of the server to the map.
         servers[serverSocket]->name = tokens[1];
-        std::cout << "I added name of the server to my map" << std::endl;
 
         // Get the ip and the port number where we listeen for server connections to our server.
         std::string strIP = myIP;
         std::string strPort = std::to_string(serverPort);
-        std::cout << "I got strIP and strPort" << std::endl;
         
         // Make the message that conatains every 1-hop connected server.
         std::string msg = "";
-        std::cout << "I created an empty strIP and strPort" << std::endl;
         msg = "SERVERS," + name + "," + strIP + "," + strPort + ";";
-        std::cout << "I am in the middle of LISTSERVERS," + name << std::endl; 
         // Add server from the servers map to msg and send it to the server that sent the LISTSERVERS command.
         for(auto const& pair : servers)
         {
@@ -352,17 +349,14 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds,
             }
         }
 
-        //std::cout << "THIS IS MSG: " << msg << std::endl;
-
         // Add start and end characters and send msg back to the server.
         msg = addStartAndEnd(msg);
-        std::cout << "Sending  a list of my servers: " + name << std::endl;
+        std::cout << "Sending  a list of my servers: " << std::endl;
         send(serverSocket, msg.c_str(), msg.length(), 0);
     }
     // Processes a list of servers and tries to connect to them.
     else if((tokens[0].compare("SERVERS") == 0) && (tokens.size() >= 4))
     {
-        std::cout << "SERVERS COMMAND RECEIVED" << std::endl;
         // Save the first server in the message because that's the server that we connected to.
         servers[serverSocket]->name = tokens[1];
         servers[serverSocket]->ip = tokens[2];
@@ -387,13 +381,11 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds,
         // Parse the string into tokens with ";" as a delimeter.
         tokens = parseString(";", (char *)strBuffer.c_str());
 
-        // BY checking if you have their name in your map
         // Loop over the tokens and parse them into smaller tokens to seperate ip and port information of the listed servers.
         for(int i = 1; i < tokens.size(); i++)
         {
             char * miniBuffer = (char *)tokens[i].c_str(); // A parsed token on char * form.
             smallerTokens = parseString(",", miniBuffer); // Parse into smaller tokens by the delimitor ",".
-            //std::cout << "Printing  Token number " << i << ": " << tokens[i] << std::endl;
             // Make sure that the token is not empty.
             if(tokens[i] != "")
             {
@@ -401,7 +393,6 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds,
                 // Loop over the smaller tokens and parse out the relevant information of them.
                 for(int j = 0; j < smallerTokens.size(); j++)
                 {
-                    //std::cout << "Printing  smallerToken number " << j << ": " << smallerTokens[j] << std::endl;
                     // if j == 0 then it's the name of the server.
                     if(j == 0)
                     {
@@ -419,27 +410,27 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds,
                     }
                 }
                 // Make sure that ip or port is not empty, and it's not our server.
-                bool found = false;
+              /*  bool found = false;
                 for(auto const& pair : servers)
                 {
                     // If name is found in the map don't try to connect to it's associated server.
-                    if(pair.second->name == serv.name /*&& pair.second->ip == serv.ip && pair.second->port == serv.port*/)
+                    if(pair.second->name == serv.name)
                     {
                         std::cout << "FOUND DUPLICATE: " << serv.name << std::endl; 
                         found = true;
                     }
-                }
-                if(serv.ip != "" && serv.port != -1 /*&& (serverPort != serv.port && name != serv.name)*/ && !found)
+                } */
+                if(serv.ip != "" && serv.port != -1 /*&& (serverPort != serv.port && name != serv.name) && !found*/)
                 {
                     // Check if we already have a connection to this server.
                     bool add = true;
                     for(auto const& pair : servers)
                     {
                         Server *server = pair.second;
-
                         // If name is found in the map don't try to connect to it's associated server.
                         if(server->name == serv.name)
                         {
+                            std::cout << "I am already connected to him: " << server->name << std::endl;
                             add = false;
                         }
                     }
@@ -456,35 +447,28 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds,
                     if(add)
                     {
                         // Add the serv information to the vector.
-                        serversToConnect.push_back(serv);
-                        // Add the server name to future connections so we know that we are going to connect to it. This should avoid tryting to connect to the same server twice.
-                        //futureConnections.push_back(serv.name);
+                        if(serv.port != serverPort) // Check if it is himself.
+                            serversToConnect.push_back(serv);
                     }
                 }
             }
         }
         // loop over serversToConnect and try to connect to the servers.
-        /*for(int i = 0; i < serversToConnect.size(); i++)
+       /* for(int i = 0; i < serversToConnect.size(); i++)
         {
             unsigned int microseconds = 100000;
             usleep(microseconds);
             connectServer(serversToConnect[i].ip.c_str(), std::to_string(serversToConnect[i].port).c_str());
-            // After connection remover the server from future server connections.
-            futureConnections.erase(std::remove(futureConnections.begin(), futureConnections.end(), serversToConnect[i].name), futureConnections.end());
-            for(i = 0;  i < futureConnections.size(); i++)
-            {
-                if(futureConnections[i] == serversToConnect[i].name)
-                {
-                    //futureConnections.erase(futureConnections.begin() + i);
-                }
-            }
         }*/
         if(serversToConnect.size() > 0)
         {
-            unsigned int microseconds = 10000;
-            usleep(microseconds);
+            std::cout << "Try to connect to: " << serversToConnect[0].name << std::endl;
             connectServer(serversToConnect[0].ip.c_str(), std::to_string(serversToConnect[0].port).c_str());
         }
+    }
+    else
+    {
+        std::cout << "Unknown command from client:" << buffer << std::endl;
     }
 }
 
@@ -736,6 +720,7 @@ int main(int argc, char* argv[])
 
                     if(FD_ISSET(server->sock, &readSockets))
                     {
+                        memset(&buffer, 0, sizeof(buffer));
                         // recv() == 0 means client has closed connection
                         if(recv(server->sock, buffer, sizeof(buffer), MSG_DONTWAIT) == 0)
                         {
@@ -748,16 +733,67 @@ int main(int argc, char* argv[])
                         // only triggers if there is somePort on the socket for us.
                         else
                         {
+                            std::cout << "THIS IS THE BUFFER before serverCommand and start and end removal: " << buffer << std::endl; 
                             std::string strBuffer = buffer;
+                            std::vector<std::string> bufferTokens;
+                            std::string strBuffer2 = strBuffer;
+  /*
+                            // Find the position of first delimiter 
+                            int firstDelPos = s1.find((char)0x01);
+                            // Find the position of second delimiter
+                            int secondDelPos = s1.find((char)0x04);
+                            // Get the substring between two delimiters
+                            std::string strbetweenTwoDels = s1.substr(firstDelPos+1, secondDelPos-firstDelPos-1); 
+                            // prints the result 
+                            std::cout << "String between delimiters 0x01 and 0x04 is: " << strbetweenTwoDels << std::endl; 
 
+                            s1 = s1.erase(firstDelPos, secondDelPos-firstDelPos);
+
+                            std::cout << "Print s1 after deletion: " << s1 << std::endl;
+
+                            // Find the position of first delimiter 
+                            firstDelPos = s1.find((char)0x01);
+                            // Find the position of second delimiter
+                            secondDelPos = s1.find((char)0x04);
+
+                            std::string strbetweenTwoDels2 = s1.substr(firstDelPos+1, secondDelPos-firstDelPos-1); 
+                            // prints the result 
+                            std::cout << "String between delimiters 0x01 and 0x04 is now: " << strbetweenTwoDels2; 
+*/
+                            while(strBuffer2.size() > 0)
+                            {
+                                std::cout << "******************************" << std::endl;
+                                // Find the position of first delimiter 
+                                int firstDelPos = strBuffer2.find((char)0x01);
+                                // Find the position of second delimiter
+                                int secondDelPos = strBuffer2.find((char)0x04);
+                                // Get the substring between two delimiters
+                                std::cout << "THIS IS THE strBuffer2: " << strBuffer2 << std::endl;
+                                std::string strbetweenTwoDels = strBuffer2.substr(firstDelPos+1, secondDelPos-firstDelPos-1); 
+
+                                // prints the result 
+                                std::cout << "THE SIZE OF strbetweenTwoDels: " << strbetweenTwoDels.size() << std::endl;
+                                std::cout << "String between delimiters 0x01 and 0x04 is: " << strbetweenTwoDels << std::endl; 
+
+                                std::cout << "Size of strBuffer2 before erase " << strBuffer2.size() << std::endl;
+                                strBuffer2 = strBuffer2.erase(firstDelPos, (secondDelPos-firstDelPos)+1);
+
+                                std::cout << "THE SIZE OF strBuffer after deletion: " << strBuffer2.size() << std::endl;
+                                std::cout << "Print strBuffer2 after deletion: " << strBuffer2 << std::endl;
+
+                                serverCommand(server->sock, &openSockets, &maxfds, 
+                                            (char*)strbetweenTwoDels.c_str());
+                            } 
+                            /*
+                            std::cout << "The code goes poopy here" << std::endl;
                             // If end and start character was found then send the message
                             if(strBuffer.find((char)0x01) == std::string::npos)
                             {
-                                std::cout << "START CHARACTER NOT FOUND" << std::endl;
+                                std::cout << "*************START CHARACTER NOT FOUND*************" << std::endl;
                             }
                             if(strBuffer.find((char)0x04) == std::string::npos)
                             {
-                                std::cout << "END CHARACTER NOT FOUND" << std::endl;
+                                std::cout << "*************END CHARACTER NOT FOUND************" << std::endl;
                             }
                             if(strBuffer.find((char)0x01) != std::string::npos && strBuffer.find((char)0x04) != std::string::npos)
                             {
@@ -769,6 +805,7 @@ int main(int argc, char* argv[])
                                 serverCommand(server->sock, &openSockets, &maxfds, 
                                             (char*)msg);
                             }
+                            */
                         }
                     }
                 }
