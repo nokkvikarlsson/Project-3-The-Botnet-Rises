@@ -99,7 +99,6 @@ int main(int argc, char* argv[])
        perror("setsockopt failed: ");
    }
 
-   
    if(connect(serverSocket, (struct sockaddr *)&serv_addr, sizeof(serv_addr) )< 0)
    {
        printf("Failed to open socket to server: %s\n", argv[1]);
