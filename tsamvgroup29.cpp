@@ -664,13 +664,6 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
                 msg += " " + tokens[i];
             }
         }
-        // If the first character is a whitespace then remove it.
-        msg = msg.substr(1,msg.size()-2);
-        if(isspace(msg[0]))
-        {
-            std::cout << "Remove start character" << std::endl;
-            msg = msg.erase(0,1);
-        }
 
         std::cout << "+++++++++++To summarize++++++++++" << std::endl;
         std::cout << "This is the message: " << tokens[0] << std::endl;
