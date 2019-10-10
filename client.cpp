@@ -93,7 +93,6 @@ int main(int argc, char* argv[])
 
    // Turn on SO_REUSEADDR to allow socket to be quickly reused after 
    // program exit.
-
    if(setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, &set, sizeof(set)) < 0)
    {
        printf("Failed to set SO_REUSEADDR for port %s\n", argv[2]);
