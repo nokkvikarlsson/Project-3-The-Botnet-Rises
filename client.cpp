@@ -26,6 +26,8 @@
 #include <sstream>
 #include <thread>
 #include <map>
+#include <ctime>
+#include <chrono>
 
 // Threaded function for handling responss from server
 
