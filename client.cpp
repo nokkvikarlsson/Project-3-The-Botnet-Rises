@@ -49,24 +49,24 @@ void listenServer(int serverSocket)
        }
        else if(nread > 0)
        {
-          //printf("%s\n", buffer);
-          std::cout << std::endl;
+            //printf("%s\n", buffer);
+            std::cout << std::endl;
 
-        std::time_t t = std::time(0);   // get current time
-            std::tm* curr = std::localtime(&t);
+            std::time_t t = std::time(0);   // get current time
+                std::tm* curr = std::localtime(&t);
 
-        std::cout << '[';
-        if(curr->tm_mday < 10) { std::cout << '0'; }
-        std::cout << curr->tm_mday << '/';
-        if(curr->tm_mon < 10) { std::cout << '0'; }
-        std::cout << curr->tm_mon << ' ';
-        if(curr->tm_hour < 10) { std::cout << '0'; }
-        std::cout << curr->tm_hour << ':';
-        if(curr->tm_min < 10) { std::cout << '0'; }
-            std::cout << curr->tm_min << ':';
-        if(curr->tm_sec < 10) { std::cout << '0'; }
-            std::cout << curr->tm_sec << ']'
-            << " - " << buffer << "\n \n";
+            std::cout << '[';
+            if(curr->tm_mday < 10) { std::cout << '0'; }
+            std::cout << curr->tm_mday << '/';
+            if(curr->tm_mon < 10) { std::cout << '0'; }
+            std::cout << curr->tm_mon << ' ';
+            if(curr->tm_hour < 10) { std::cout << '0'; }
+            std::cout << curr->tm_hour << ':';
+            if(curr->tm_min < 10) { std::cout << '0'; }
+                std::cout << curr->tm_min << ':';
+            if(curr->tm_sec < 10) { std::cout << '0'; }
+                std::cout << curr->tm_sec << ']'
+                << " - " << buffer << "\n \n";
        }
     }
 }
