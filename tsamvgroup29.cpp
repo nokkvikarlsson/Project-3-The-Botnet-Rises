@@ -119,7 +119,7 @@ char buffer[1025];              // buffer for reading from clients
 int maxfds;                     // Passed to select() as max fd in set
 int n = 0;
 int serverPort;                 // Port that is used to listen for server connections.
-std::string name = "V_GROUP_29";               // Stores group ID of our server.
+std::string name = "P3_GROUP_29";               // Stores group ID of our server.
 char myIP[32];
 std::vector<std::string> futureConnections;
 
@@ -550,6 +550,7 @@ void serverCommand(int serverSocket, char *buffer)
         }
         
         std::cout << "The size of the map: " << messageVault.size() << std::endl;
+        std::cout << receiver << " has this many messages: " << messageVault[receiver].size() << std::endl;
     }
     // If GET_MSG,<FROM_GROUP_ID> is received then check in out messageVault map if we have any messages for that ID
     else if((tokens[0].compare("GET_MSG") == 0) && (tokens.size() > 1))
@@ -569,15 +570,19 @@ void serverCommand(int serverSocket, char *buffer)
         // If the message had the server's as the destination ID then send the message back to the client.
     
         // Send back all messages for that GROUP_ID and erase from our message vault afterwards.
+        std::cout << receiver << " has this many messages: " << messageVault[receiver].size() << std::endl;
         if(messageVault[receiver].size() > 0)
         {
             for(int i = 0; i < messageVault[receiver].size(); i++)
             {
                 msg = "SEND_MSG," + messageVault[receiver][i].sender + "," + receiver + "," +  messageVault[receiver][i].msg;
-                send(clientSock, msg.c_str(), msg.length(),0);
+                std::cout << "This is the message I am sending: " << msg << std::endl;
+                msg = addStartAndEnd(msg);
+                send(serverSock, msg.c_str(), msg.length(),0);
             }
             messageVault.erase(receiver);
         }
+        std::cout << receiver << " has this many messages after sending them: " << messageVault[receiver].size() << std::endl;
     }
     else
     {
@@ -719,33 +724,27 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
         std::cout << "+++++++++++To summarize++++++++++" << std::endl;
         std::cout << "This is the message: " << tokens[0] << std::endl;
         std::cout << "This is the group_ID: " << receiver << std::endl;
+        std::cout << "This is my name: " << name << std::endl;
         std::cout << "This is the message: " << msg << std::endl;
 
-        // If the message had the server's as the destination ID then send the message back to the client.
-        if(receiver == name)
+        // Check if the map contains any a key for this receiver ID, if not add it.
+        if(messageVault.find(receiver) == messageVault.end())
         {
-            send(clientSock, msg.c_str(), msg.length(),0);
+            std::vector<Message> messages;
+            Message message = Message(name, msg);
+            messages.push_back(message);
+            messageVault[receiver] = messages;
         }
-        // If not then add the message to the messageVault with the desitnation ID as a key.
+        // If the receiver ID is already in the map then add it to the vector of messages associated with him.
         else
         {
-            // Check if the map contains any a key for this receiver ID, if not add it.
-            if(messageVault.find(receiver) == messageVault.end())
-            {
-                std::vector<Message> messages;
-                Message message = Message(name, msg);
-                messages.push_back(message);
-                messageVault[receiver] = messages;
-            }
-            // If the receiver ID is already in the map then add it to the vector of messages associated with him.
-            else
-            {
-                Message message = Message(name, msg);
-                messageVault[receiver].push_back(message);
-            }
+            Message message = Message(name, msg);
+            messageVault[receiver].push_back(message);
         }
         std::cout << "The size of the map: " << messageVault.size() << std::endl;
+        std::cout << receiver << " has this many messages: " << messageVault[receiver].size() << std::endl;
     }
+    // GETMSG, <GROUP_ID>. Gets one message for the group from the message vault and sends it to the server.
     else if((tokens[0].compare("GETMSG,") == 0) && (tokens.size() > 1))
     {
         std::string receiver = tokens[1];
@@ -754,17 +753,67 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
         std::cout << "This is the group_ID: " << receiver << std::endl;
     
         // If receiver is the server himself then check if the server is storing any messages from the client to himself.
+        std::cout << "He has this many messages: " << messageVault[receiver].size() << std::endl;
         if(messageVault[receiver].size() > 0)
-        {   std::cout << "DID I FREEZE here?" << std::endl;
+        {   
             std::cout << "size of vector: " <<  messageVault[receiver].size() << std::endl;
             msg = messageVault[receiver][messageVault[receiver].size()-1].msg;
-            messageVault[receiver].erase(messageVault[receiver].end());
+            messageVault[receiver].pop_back();
+            std::cout << "size of vector: " <<  messageVault[receiver].size() << std::endl;
             send(clientSock, msg.c_str(), msg.length(),0);
         }
         else
         {
             std::cout << "The server is storing no messages for << " <<  receiver << std::endl;  
         }
+    }
+    // TEST COMMNAD TO TEST SEND AND GET FUNCTIONALITY
+    else if((tokens[0].compare("TESTSENDMSG,") == 0))
+    {
+        std::string receiver = tokens[1];
+        int sock = 0;
+        std::string msg = "";
+
+        std::cout << "This is the receiver: " << receiver << std::endl;
+    
+        msg += "SEND_MSG," + name + "," + tokens[1] + ",HEY HOMO, BROOO";
+
+        for(auto const& pair : servers)
+        {
+            std::cout << "This is the pair.second->name: " << pair.second->name << std::endl;
+            if(pair.second->name == receiver)
+            {
+                sock = pair.second->sock;
+                std::cout << "This is the socket: " << sock << std::endl;
+            }
+        }
+        msg = addStartAndEnd(msg);
+        std::cout << "sending this: " << msg << std::endl;
+        send(sock, msg.c_str(), msg.length(),0);
+    }
+    else if((tokens[0].compare("TESTGETMSG,") == 0))
+    {
+        std::string receiver = tokens[1];
+        std::string from = tokens[2];
+        int sock = 0;
+        std::string msg = "";
+
+        std::cout << "This is the receiver: " << receiver << std::endl;
+    
+        msg += "GET_MSG,"  + receiver;
+
+        for(auto const& pair : servers)
+        {
+            std::cout << "This is the pair.second->name: " << pair.second->name << std::endl;
+            if(pair.second->name == receiver)
+            {
+                sock = pair.second->sock;
+                std::cout << "This is the socket: " << sock << std::endl;
+            }
+        }
+        msg = addStartAndEnd(msg);
+        std::cout << "sending this: " << msg << std::endl;
+        send(sock, msg.c_str(), msg.length(),0);
     }
     else
     {
