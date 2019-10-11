@@ -317,6 +317,29 @@ void closeClient(int clientSocket, fd_set *openSockets, int *maxfds)
      FD_CLR(clientSocket, openSockets);
 }
 
+// Close a server's connection, remove it from the client list, and
+// tidy up select sockets afterwards.
+void closeServer(int serverSocket, fd_set *openSockets, int *maxfds)
+{
+     // Remove client from the clients list
+     clients.erase(serverSocket);
+
+     // If this client's socket is maxfds then the next lowest
+     // one has to be determined. Socket fd's can be reused by the Kernel,
+     // so there aren't any nice ways to do this.
+
+     if(*maxfds == serverSocket)
+     {
+        for(auto const& p : clients)
+        {
+            *maxfds = std::max(*maxfds, p.second->sock);
+        }
+     }
+
+     // And remove from the list of open sockets.
+     FD_CLR(serverSocket, openSockets);
+}
+
 // Parsers buffer into tokens slpit by delimiter.
 std::vector<std::string> parseString(std::string delimiter, char *buffer)
 {
@@ -968,10 +991,19 @@ int main(int argc, char* argv[])
                         // recv() == 0 means client has closed connection
                         if(recv(server->sock, buffer, sizeof(buffer), MSG_DONTWAIT) == 0)
                         {
+                            std::cout << "I AM HERE" << std::endl;
                             printf("Server closed connection: %d", server->sock);
                             close(server->sock);      
 
-                            closeClient(server->sock, &openSockets, &maxfds);
+                            //closeServer(server->sock, &openSockets, &maxfds);
+
+                            /*for(auto const& pair : servers)
+                            {
+                                if(pair.first == server->sock)
+                                {
+                                    servers.erase[pair.first];
+                                }
+                            }*/
                         }
                         // We don't check for -1 (nothing received) because select()
                         // only triggers if there is somePort on the socket for us.
