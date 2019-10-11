@@ -471,6 +471,7 @@ void serverCommand(int serverSocket, char *buffer)
         for(int i = 0; i < serversToConnect.size(); i++)
         {
             servSock = connectServer(serversToConnect[i].ip.c_str(), std::to_string(serversToConnect[i].port).c_str());
+            // Add information about the server.
             if(servSock != -1)
             {
                 servers[servSock]->name = serversToConnect[i].name;
@@ -478,18 +479,18 @@ void serverCommand(int serverSocket, char *buffer)
                 servers[servSock]->port = serversToConnect[i].port;
             }
         }
-
+        // Remove all empty servers from the map.
         std::vector<int> serversToRemove;
         for(auto const& pair : servers)
         {
+            // If we find a server with a empty name mark it for removal.
             std::cout << "Server: " << pair.second->name << std::endl;
             if(pair.second->name == "")
             {
-                std::cout << "TEEHEEE" << std::endl;
                 serversToRemove.push_back(pair.first);
             }
         }
-        
+        // Remove allt the servers from the map.
         for(int i = 0; i < serversToRemove.size(); i++)
         {
             servers.erase(serversToRemove[i]);
@@ -501,9 +502,7 @@ void serverCommand(int serverSocket, char *buffer)
                     maxfds = std::max(maxfds, p.second->sock);
                 }
             }
-
-            // And remove from the list of open sockets.
-
+            // Remove from the list of open sockets.
             FD_CLR(serversToRemove[i], &openSockets);
         }
         serversToRemove.clear();
