@@ -101,6 +101,7 @@ class Message
 
 std::map<int, Client*> clients; // Lookup table for per Client information
 std::map<int, Server*> servers; // Lookup table for per Server information
+std::vector<int> serversToRemove; // Stores keys that need to be removed from the server map.
 std::map<std::string, std::vector<Message>> messageVault; // Stores messages for groups, the key is the group_ID the messages are for.
 
 bool finished;
@@ -287,8 +288,6 @@ void connectServer(const char * ipAddr, const char * portNo)
     msg = addStartAndEnd(msg);
 
     send(serverSocket, msg.c_str(), msg.length(),0);
-    //unsigned int microseconds = 1000000;
-    //usleep(microsecond
 }
 
 // Close a client's connection, remove it from the client list, and
@@ -335,24 +334,32 @@ std::vector<std::string> parseString(std::string delimiter, char *buffer)
 }
 
 // Process commands from servers on server.
-void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds, 
+void serverCommand(int serverSocket, int *maxfds, 
                   char *buffer)
 {
     std::string strBuffer = buffer; // Store the buffer as a string.
     // Parse the string into tokens using "," as a delimiter.
     std::vector<std::string> tokens = parseString(",", buffer);
-    std::cout << "TOKENS[0]: " << tokens[0] << std::endl;
 
     // Sends 1-hop connected servers back to the serverSocket.
     if((tokens[0].compare("LISTSERVERS") == 0) && (tokens.size() == 2))
     {
+        // CHECK IF THIS WE HAVE A CONNECTION TO THIS GUY, IF WE HAVE THEN PREPARE TO DELETE HIM.
+        for(auto const& pair : servers)
+        {
+            if(pair.second->name == tokens[1])
+            {
+                std::cout << "You already have a connection to this so I append him to the server for removal" << std::endl;
+                serversToRemove.push_back(serverSocket);
+            }
+        }
+
         // Add the ID of the server to the map.
         servers[serverSocket]->name = tokens[1];
-
         // Get the ip and the port number where we listeen for server connections to our server.
         std::string strIP = myIP;
         std::string strPort = std::to_string(serverPort);
-        
+                
         // Make the message that conatains every 1-hop connected server.
         std::string msg = "";
         msg = "SERVERS," + name + "," + strIP + "," + strPort + ";";
@@ -369,6 +376,7 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds,
 
         // Add start and end characters and send msg back to the server.
         msg = addStartAndEnd(msg);
+        std::cout << "Sending a list of servers to" << tokens[1] << std::endl;
         send(serverSocket, msg.c_str(), msg.length(), 0);
     }
     // Processes a list of servers and tries to connect to them.
@@ -377,8 +385,9 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds,
         // Save the first server in the message because that's the server that we connected to.
         servers[serverSocket]->name = tokens[1];
         servers[serverSocket]->ip = tokens[2];
-        servers[serverSocket]->port = atoi(tokens[3].c_str());
-
+        servers[serverSocket]->port = atoi(tokens[3].c_str()); 
+            
+        
         std::cout << "*****Printing out connected servers*****" << std::endl;
         for(auto const& pair : servers)
         {   
@@ -394,7 +403,7 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds,
 
         std::vector<std::string> smallerTokens;
         std::vector<Server> serversToConnect; // Stores information of servers that we will try to connect to.
-        
+            
         // Parse the string into tokens with ";" as a delimeter.
         tokens = parseString(";", (char *)strBuffer.c_str());
 
@@ -429,6 +438,7 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds,
                 // Make sure that ip or port is not empty, and it's not our server.
                 if(serv.ip != "" && serv.port != -1)
                 {
+                    std::cout << "Looping over the servers map to check if we have a connection to this guy: " << serv.name << std::endl;
                     // Check if we already have a connection to this server.
                     bool add = true;
                     for(auto const& pair : servers)
@@ -437,23 +447,23 @@ void serverCommand(int serverSocket, fd_set *openSockets, int *maxfds,
                         // If name is found in the map don't try to connect to it's associated server.
                         if(server->name == serv.name)
                         {
-                            std::cout << "I am already connected to him: " << server->name << std::endl;
+                            std::cout << "I am already connected to him: " << serv.name << std::endl;
                             add = false;
+                            break;
                         }
                     }
                     if(add)
                     {
+                        std::cout << "I am not connected to" << serv.name << std::endl;
                         // Add the serv information to the vector.
+                        std::cout << "Checking if it's me: " << serv.name << std::endl;
                         if(serv.port != serverPort) // Check if it is you.
-                            serversToConnect.push_back(serv);
+                            std::cout << "IT WASNT ME" << std::endl;
+                            std::cout << "Adding server to serversToConnect: " << serv.name << std::endl;
+                            connectServer(serv.ip.c_str(), std::to_string(serv.port).c_str());
                     }
                 }
             }
-        }
-        // loop over serversToConnect and try to connect to the servers.
-        if(serversToConnect.size() > 0)
-        {
-            connectServer(serversToConnect[0].ip.c_str(), std::to_string(serversToConnect[0].port).c_str());
         }
     }
     // If SEND_MSG,<FROM_GROUP_ID>,<TO_GROUP_ID>,<message content> was received hold on to the message until someone gets the message.
@@ -568,6 +578,7 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
         
         // Make the message that conatains every 1-hop connected server.
         std::string msg = "";
+        std::string start = "A list of directly connected servers: ";
 
         // Add server from the servers map to msg and send it to the server that sent the LISTSERVERS command.
         for(auto const& pair : servers)
@@ -582,6 +593,10 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
         if(msg == "")
         {
             msg = "No servers are connected to the server :(";
+        }
+        else
+        {
+            msg = start + msg;
         }
 
         // Send the message back to the client
@@ -704,10 +719,9 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
     
         // If receiver is the server himself then check if the server is storing any messages from the client to himself.
         if(messageVault[receiver].size() > 0)
-        {   std::cout << "DID I FREEZE here?" << std::endl;
-            std::cout << "size of vector: " <<  messageVault[receiver].size() << std::endl;
-            msg = messageVault[receiver][messageVault[receiver].size()-1].msg;
-            messageVault[receiver].erase(messageVault[receiver].end());
+        {   
+            msg = messageVault[receiver][0].msg;
+            messageVault[receiver].erase(messageVault[receiver].begin());
             send(clientSock, msg.c_str(), msg.length(),0);
         }
         else
@@ -806,12 +820,13 @@ int main(int argc, char* argv[])
 
                printf("Client connected on client port: %d\n", clientSock);
             }
-            // Second, accept any new connections to the server from other serveras from the listen Server socket
+            // Second, accept any new connections to the server from other servers from the listen Server socket
             if(FD_ISSET(listenServerSock, &readSockets))
             {
                 serverSock = accept(listenServerSock, (struct sockaddr *)&server,
                                     &serverLen);
                 printf("accept***\n");
+                
                 // Add new server to the list of open sockets
                 FD_SET(serverSock, &openSockets);
 
@@ -879,12 +894,13 @@ int main(int argc, char* argv[])
                         {
                             // Tokenize the buffer by start and end characters, because more then one command might be in the buffer.
                             std::string strBuffer = buffer;
+                            std::cout << "THIS IS THE BUFFER: " << buffer << std::endl;
                             bool keepLooping = true;
 
-                            if(strBuffer.find((char)0x01) == std::string::npos && strBuffer.find((char)0x04) == std::string::npos)
+                            /*if(strBuffer.find((char)0x01) == std::string::npos && strBuffer.find((char)0x04) == std::string::npos)
                             {
                                     strBuffer = addStartAndEnd(strBuffer);
-                            }
+                            }*/
 
                             while(strBuffer.size() > 0 && keepLooping)
                             {
@@ -901,7 +917,7 @@ int main(int argc, char* argv[])
                                     strBuffer = strBuffer.erase(firstDelPos, (secondDelPos-firstDelPos)+1);
 
                                     std::cout << "Processing this command: " << strbetweenTwoDels << std::endl;
-                                    serverCommand(server->sock, &openSockets, &maxfds, 
+                                    serverCommand(server->sock, &maxfds, 
                                                 (char*)strbetweenTwoDels.c_str());
                                 }
                                 else
@@ -912,6 +928,29 @@ int main(int argc, char* argv[])
                             } 
                         }
                     }
+                }
+                // Check if we should delete duplicates from the server map
+                if(serversToRemove.size() > 0)
+                {
+                    std::cout << "WE HAVE SOME SERVERS READY FOR REMOVAL" << std::endl;
+                    // Remove Duplicates from the map.
+                    for(int i = 0; i < serversToRemove.size(); i++)
+                    {
+                        servers.erase(serversToRemove[i]);
+                        
+                        if(maxfds == serverSock)
+                        {
+                            for(auto const& p : servers)
+                            {
+                                maxfds = std::max(maxfds, p.second->sock);
+                            }
+                        }
+
+                        // And remove from the list of open sockets.
+                        FD_CLR(serverSock, &openSockets);
+                    }
+
+                    serversToRemove.clear();
                 }
             }
         }
