@@ -29,6 +29,8 @@
 #include <unistd.h>
 #include <ifaddrs.h>
 #include <net/if.h>
+#include <ctime>
+#include <fstream>
 
 // fix SOCK_NONBLOCK for OSX
 #ifndef SOCK_NONBLOCK
@@ -123,6 +125,49 @@ std::string name = "P3_GROUP_29";               // Stores group ID of our server
 char myIP[32];
 int maxServerConnections = 5;       // The max number of direct server connections
 
+//Fuction for logging messages to 2 files, send_mgs and get_msg
+void logMessage(const char logType[], char message[1025])
+{
+        std::time_t t = std::time(0);   // get current time
+        std::tm* curr = std::localtime(&t);
+ 
+        if(logType == "SENT")
+        {
+                std::ofstream myfile;
+                myfile.open ("sentMessageLog.txt", std::ios_base::app);
+                myfile << '[';
+                if(curr->tm_mday < 10) { myfile << '0'; }
+                myfile << curr->tm_mday << '/';
+                if(curr->tm_mon < 10) { myfile << '0'; }
+                myfile << curr->tm_mon << ' ';
+                if(curr->tm_hour < 10) { myfile << '0'; }
+                myfile << curr->tm_hour << ':';
+                if(curr->tm_min < 10) { myfile << '0'; }
+                myfile << curr->tm_min << ':';
+                if(curr->tm_sec < 10) { myfile << '0'; }
+                myfile << curr->tm_sec << ']'
+                << " - " << message << "\n";
+                myfile.close();
+        }
+        else if(logType == "RECEIVED")
+        {
+                std::ofstream myfile;
+                myfile.open ("receivedMessageLog.txt", std::ios_base::app);
+                myfile << '[';
+                if(curr->tm_mday < 10) { myfile << '0'; }
+                myfile << curr->tm_mday << '/';
+                if(curr->tm_mon < 10) { myfile << '0'; }
+                myfile << curr->tm_mon << ' ';
+                if(curr->tm_hour < 10) { myfile << '0'; }
+                myfile << curr->tm_hour << ':';
+                if(curr->tm_min < 10) { myfile << '0'; }
+                myfile << curr->tm_min << ':';
+                if(curr->tm_sec < 10) { myfile << '0'; }
+                myfile << curr->tm_sec << ']'
+                << " - " << message << "\n";
+                myfile.close();
+        }
+}
 
 // Open socket for specified port.
 //
@@ -542,6 +587,7 @@ void serverCommand(int serverSocket, char *buffer)
     // If SEND_MSG,<FROM_GROUP_ID>,<TO_GROUP_ID>,<message content> was received hold on to the message until someone gets the message.
     else if((tokens[0].compare("SEND_MSG") == 0) && (tokens.size() > 3))
     {
+        logMessage("RECEIVED", buffer);
         std::cout << "SEND_MSG received" << std::endl;
         std::string msg = ""; // Will store message parsed from the client command.
         std::string sender = tokens[1];
@@ -592,6 +638,7 @@ void serverCommand(int serverSocket, char *buffer)
             std::string forwardMsg = "";
             // SEND MSG,<FROM GROUP ID>,<TO GROUP ID>,<Message content>
             forwardMsg += "SEND_MSG," + sender + "," + receiver + "," + msg;
+            logMessage("SENT", forwardMsg);
             forwardMsg = addStartAndEnd(forwardMsg);
             send(forwardSock, forwardMsg.c_str(), forwardMsg.length(),0);
         }
@@ -645,6 +692,7 @@ void serverCommand(int serverSocket, char *buffer)
             {
                 msg = "SEND_MSG," + messageVault[receiver][i].sender + "," + receiver + "," +  messageVault[receiver][i].msg;
                 std::cout << "This is the message I am sending: " << msg << std::endl;
+                logMessage("SENT", msg);
                 msg = addStartAndEnd(msg);
                 send(serverSock, msg.c_str(), msg.length(),0);
             }
@@ -822,6 +870,7 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
             std::string forwardMsg = "";
             // SEND MSG,<FROM GROUP ID>,<TO GROUP ID>,<Message content>
             forwardMsg += "SEND_MSG," + name + "," + receiver + "," + msg;
+            logMessage("SENT", forwardMsg);
             forwardMsg = addStartAndEnd(forwardMsg);
             send(forwardSock, forwardMsg.c_str(), forwardMsg.length(),0);
         }
