@@ -25,6 +25,7 @@
 #include <sstream>
 #include <thread>
 #include <map>
+#include <time.h>
 
 #include <unistd.h>
 #include <ifaddrs.h>
@@ -82,9 +83,8 @@ class Message
     std::string sender;          // The Group ID of the sender of the message
     std::string msg;             // The message to the sender.
 
-    Message(/*std::string receiver, */std::string sender, std::string msg)
+    Message(std::string sender, std::string msg)
     {
-        //this->receiver = receiver;
         this->sender = sender;
         this->msg = msg;
     }
@@ -105,23 +105,23 @@ std::map<std::string, std::vector<Message>> messageVault; // Stores messages for
 
 bool finished;
 int listenClientSock;                 // Socket for connections from client
-int listenServerSock;           // Socket for connection from other servers
-int clientSock;                 // Socket for connecting client
-int serverSock;                 // Socket for connecting server
-fd_set openSockets;             // Current open sockets 
-fd_set readSockets;             // Socket list for select()        
-fd_set exceptSockets;           // Exception socket list
+int listenServerSock;                 // Socket for connection from other servers
+int clientSock;                       // Socket for connecting client
+int serverSock;                       // Socket for connecting server
+fd_set openSockets;                   // Current open sockets 
+fd_set readSockets;                   // Socket list for select()        
+fd_set exceptSockets;                 // Exception socket list
 struct sockaddr_in client;
 struct sockaddr_in server;
 socklen_t clientLen;
 socklen_t serverLen;
-char buffer[1025];              // buffer for reading from clients
-int maxfds;                     // Passed to select() as max fd in set
+char buffer[1025];                    // buffer for reading from clients
+int maxfds;                           // Passed to select() as max fd in set
 int n = 0;
-int serverPort;                 // Port that is used to listen for server connections.
-std::string name = "P3_GROUP_29";               // Stores group ID of our server.
+int serverPort;                       // Port that is used to listen for server connections.
+std::string name = "P3_GROUP_29";     // Stores group ID of our server.
 char myIP[32];
-int maxServerConnections = 5;       // The max number of direct server connections
+int maxServerConnections = 5;         // The max number of direct server connections
 
 
 // Open socket for specified port.
@@ -239,7 +239,7 @@ int connectServer(const char * ipAddr, const char * portNo)
     if(getaddrinfo(ipAddr, portNo, &hints, &svr) != 0)
     {
         perror("getaddrinfo failed: ");
-        exit(0);
+        return -1;
     }
 
     struct hostent *server;
@@ -266,7 +266,7 @@ int connectServer(const char * ipAddr, const char * portNo)
     {
         printf("Failed to open socket to server: %s\n", ipAddr);
         perror("Connect failed: ");
-        return(-1);
+        return -1;
     }
     else
     {
@@ -412,7 +412,6 @@ void serverCommand(int serverSocket, char *buffer)
         }
         if(!exist)
         {
-            std::cout << "HALLO" << std::endl;
             servers[serverSocket]->name = tokens[1];
             servers[serverSocket]->ip = tokens[2];
             servers[serverSocket]->port = atoi(tokens[3].c_str());
