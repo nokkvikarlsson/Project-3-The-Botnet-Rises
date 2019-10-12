@@ -126,7 +126,7 @@ char myIP[32];
 int maxServerConnections = 5;       // The max number of direct server connections
 
 //Fuction for logging messages to 2 files, send_mgs and get_msg
-void logMessage(const char logType[], char message[1025])
+void logMessage(const char logType[], std::string message)
 {
         std::time_t t = std::time(0);   // get current time
         std::tm* curr = std::localtime(&t);
