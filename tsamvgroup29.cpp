@@ -121,7 +121,8 @@ int n = 0;
 int serverPort;                 // Port that is used to listen for server connections.
 std::string name = "P3_GROUP_29";               // Stores group ID of our server.
 char myIP[32];
-std::vector<std::string> futureConnections;
+int maxServerConnections = 5;       // The max number of direct server connections
+
 
 // Open socket for specified port.
 //
@@ -490,18 +491,27 @@ void serverCommand(int serverSocket, char *buffer)
             }
         }
         int servSock;
-        // loop over serversToConnect and try to connect to the servers.
-        for(int i = 0; i < serversToConnect.size(); i++)
+        if(servers.size() < maxServerConnections)
         {
-            servSock = connectServer(serversToConnect[i].ip.c_str(), std::to_string(serversToConnect[i].port).c_str());
-            // Add information about the server.
-            if(servSock != -1)
+            // loop over serversToConnect and try to connect to the servers.
+            for(int i = 0; i < serversToConnect.size(); i++)
             {
-                servers[servSock]->name = serversToConnect[i].name;
-                servers[servSock]->ip = serversToConnect[i].ip;
-                servers[servSock]->port = serversToConnect[i].port;
+                servSock = connectServer(serversToConnect[i].ip.c_str(), std::to_string(serversToConnect[i].port).c_str());
+                // Add information about the server.
+                if(servSock != -1)
+                {
+                    servers[servSock]->name = serversToConnect[i].name;
+                    servers[servSock]->ip = serversToConnect[i].ip;
+                    servers[servSock]->port = serversToConnect[i].port;
+                }
             }
         }
+        else
+        {
+            std::cout << "I am connected to too many servers :/" << std::endl;
+            std::cout << "The size of the map is: " << servers.size() << std::endl;
+        }
+        
         // Remove all empty servers from the map.
         std::vector<int> serversToRemove;
         for(auto const& pair : servers)
@@ -671,8 +681,16 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
     // Connect server to another server
     if((tokens[0].compare("CONNECT") == 0) && (tokens.size() == 3))
     {
-        // Get the socket connected to the newly connected server and return it. 
-        connectServer(tokens[1].c_str(), tokens[2].c_str());
+        // Get the socket connected to the newly connected server and return it.
+        //Check if we are already connected to five servers.
+        if(servers.size() < maxServerConnections)
+        {
+            connectServer(tokens[1].c_str(), tokens[2].c_str());
+        }
+        else
+        {
+            std::cout << "The server has reached it's maximum connections of " << maxServerConnections << " servers. :(" << std::endl;
+        }
     }
     else if((tokens[0].compare("LISTSERVERS") == 0) && (tokens.size() == 1))
     {
@@ -992,30 +1010,38 @@ int main(int argc, char* argv[])
 
                printf("Client connected on client port: %d\n", clientSock);
             }
-            // Second, accept any new connections to the server from other serveras from the listen Server socket
+            // Second, accept any new connections to the server from other servers from the listen Server socket
             if(FD_ISSET(listenServerSock, &readSockets))
             {
+                std::cout << "THIS IS THE SIZE OF THE MAP: " << servers.size() << std::endl;
+
                 serverSock = accept(listenServerSock, (struct sockaddr *)&server,
                                     &serverLen);
-                printf("accept***\n");
-                // Add new server to the list of open sockets
-                FD_SET(serverSock, &openSockets);
+                if(servers.size() >= maxServerConnections)
+                {
+                    close(serverSock);
+                    closeServer(serverSock);
+                } 
+                else
+                {
+                    printf("accept***\n");
+                    // Add new server to the list of open sockets
+                    FD_SET(serverSock, &openSockets);
 
-                // And update the maximum file descriptor
-                maxfds = std::max(maxfds, serverSock);
+                    // And update the maximum file descriptor
+                    maxfds = std::max(maxfds, serverSock);
 
-                // create a new client to store information.
-                servers[serverSock] = new Server(serverSock);
+                    // create a new client to store information.
+                    servers[serverSock] = new Server(serverSock);
 
-                // Decrement the number of sockets waiting to be dealt with
-                n--;
-
-                std::string msg = "LISTSERVERS," + name;
-                msg = addStartAndEnd(msg);
-
-                send(serverSock, msg.c_str(), msg.length(),0);
-
-                printf("Server connected on the port: %d\n", serverPort);
+                    // Decrement the number of sockets waiting to be dealt with
+                    n--;
+                    std::string msg = "LISTSERVERS," + name;
+                    msg = addStartAndEnd(msg);
+                    send(serverSock, msg.c_str(), msg.length(),0);
+                    printf("Server connected on the port: %d\n", serverPort);
+                }
+                
             }
             // Now check for commands from clients
             while(n-- > 0)
@@ -1039,13 +1065,14 @@ int main(int argc, char* argv[])
                         // only triggers if there is somePort on the socket for us.
                         else
                         {
-                            std::cout << buffer << std::endl;
+                            std::cout << "The size of the clients map: " << clients.size() << std::endl;
+                            std::cout << "This is the buffer before calling client command: " << buffer << std::endl;
                             clientCommand(client->sock, &openSockets, &maxfds, 
                                         buffer);
                         }
                     }
-               }
-               for(int i = 0; i < clientsToRemove.size(); i++)
+                }
+                for(int i = 0; i < clientsToRemove.size(); i++)
                 {
                     closeServer(clientsToRemove[i]);
                 }
