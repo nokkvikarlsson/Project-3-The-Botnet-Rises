@@ -584,7 +584,7 @@ void serverCommand(int serverSocket, char *buffer)
         serversToRemove.clear();
     }
 
-    // If STATUSREQ,<FROM_GROUP_ID was received then reply to the GROUP_ID wit$
+    // If STATUSREQ,<FROM_GROUP_ID was received then reply to the GROUP_ID with the corresponding STATUSRESP
     else if((tokens[0].compare("STATUSREQ") == 0) && (tokens.size() == 2))
     {
         std::cout << "STATUSREQ received" << std::endl;
@@ -600,6 +600,11 @@ void serverCommand(int serverSocket, char *buffer)
             }
         }
         send(serverSock, msg.c_str(), msg.length(), 0);
+    }
+
+    else if((tokens[0].compare("STATUSRESP") == 0) && (tokens.size() > 2))
+    {
+	std::cout << "STATUSRESP received" << std::endl;
     }
 
     // If SEND_MSG,<FROM_GROUP_ID>,<TO_GROUP_ID>,<message content> was received hold on to the message until someone gets the message.
