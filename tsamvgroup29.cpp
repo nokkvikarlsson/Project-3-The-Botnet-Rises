@@ -322,7 +322,7 @@ void closeClient(int clientSocket, fd_set *openSockets, int *maxfds)
 void closeServer(int serverSocket)
 {
      // Remove client from the clients list
-     clients.erase(serverSocket);
+     servers.erase(serverSocket);
 
      // If this client's socket is maxfds then the next lowest
      // one has to be determined. Socket fd's can be reused by the Kernel,
