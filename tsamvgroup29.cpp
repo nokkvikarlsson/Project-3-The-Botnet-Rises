@@ -33,6 +33,9 @@
 #include <ctime>
 #include <fstream>
 
+#define _BSD_SOURCE
+#include <sys/time.h>
+
 // fix SOCK_NONBLOCK for OSX
 #ifndef SOCK_NONBLOCK
 #include <fcntl.h>
@@ -65,6 +68,9 @@ class Server
     std::string name;      // Group ID of server user
     std::string ip;        // IP address of server
     int port;              // Port Number of server
+    struct timeval lastSent;      // The time when we last sent this server a KEEPALIVE,<no. messages>.
+    struct timeval lastReceived;  // The time when received a KEEPALIVE,<no. messages> from the server.
+    bool markedForDeletion;
 
     Server(int socket)
     {
@@ -72,6 +78,9 @@ class Server
         name = "";
         ip = "";
         port = -1;
+        gettimeofday(&lastSent, NULL);
+        gettimeofday(&lastReceived, NULL);
+        markedForDeletion = false;
     } 
 
     ~Server(){}            // Virtual destructor defined for base class
@@ -124,9 +133,12 @@ int serverPort;                       // Port that is used to listen for server 
 std::string name = "P3_GROUP_29";     // Stores group ID of our server.
 char myIP[32];
 int maxServerConnections = 5;         // The max number of direct server connections
+//clock_t currTime;                     // The current time, used to calculate if we need to process KEEPALIVE.
+struct timeval currTime;              // The current time, used to calculate if we need to process KEEPALIVE.
+
 
 //Fuction for logging messages to 2 files, send_mgs and get_msg
-void logMessage(const char logType[], std::string message)
+void logMessage(std::string logType, std::string message)
 {
         std::time_t t = std::time(0);   // get current time
         std::tm* curr = std::localtime(&t);
@@ -405,6 +417,23 @@ std::vector<std::string> parseString(std::string delimiter, char *buffer)
     return tokens;
 }
 
+// Sends a KEEPALIVE,<no. messages> to the server associated with name.
+void sendKeepAlive(std::string name)
+{
+    std::string msg = "";
+    // Find the server in the map
+    for(auto const& pair : servers)
+    {
+        if(pair.second->name == name)
+        {
+            msg += "KEEPALIVE," + std::to_string(messageVault[name].size());
+            msg = addStartAndEnd(msg);
+            std::cout << "Sending KEEPALIVE to: " << pair.second->name << std::endl;
+            send(pair.second->sock, msg.c_str(), msg.length(),0);
+        }
+    }
+}
+
 // Process commands from servers on server.
 void serverCommand(int serverSocket, char *buffer)
 {
@@ -416,10 +445,6 @@ void serverCommand(int serverSocket, char *buffer)
     // Sends 1-hop connected servers back to the serverSocket.
     if((tokens[0].compare("LISTSERVERS") == 0) && (tokens.size() == 2))
     {
-        // Add the ID of the server to the map.
-        
-        //servers[serverSocket]->name = tokens[1];
-
         // Get the ip and the port number where we listeen for server connections to our server.
         std::string strIP = myIP;
         std::string strPort = std::to_string(serverPort);
@@ -699,6 +724,25 @@ void serverCommand(int serverSocket, char *buffer)
             std::cout << receiver << " has this many messages after sending them: " << messageVault[receiver].size() << std::endl;
         }
     }
+    else if((tokens[0].compare("KEEPALIVE") == 0) && (tokens.size() == 2))
+    {
+        if(atoi(tokens[1].c_str()) > 0)
+        {
+            std::string msg = "";
+            msg += "GET_MSG," + name;
+            msg = addStartAndEnd(msg);
+            std::cout << "Sending a GET_MSG, to get my messages " << std::endl;
+            send(serverSock, msg.c_str(), msg.length(),0);
+        }
+
+        for(auto const& pair : servers)
+        {
+            if(pair.second->sock == serverSock)
+            {
+                gettimeofday(&pair.second->lastReceived, NULL);
+            }
+        }
+    }
     else
     {
         std::cout << "Unknown command from server:" << buffer << std::endl;
@@ -929,6 +973,7 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
         std::cout << "This is the receiver: " << receiver << std::endl;
     
         msg += "SEND_MSG," + name + "," + tokens[1] + ",HEY HOMO, BROOO";
+        logMessage("SENT", msg);
 
         for(auto const& pair : servers)
         {
@@ -973,9 +1018,26 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
     }
 }
 
+// Closes every server in the vector
+void closeServers(std::vector<int> serversToRemove)
+{
+    for(int i = 0; i < serversToRemove.size(); i++)
+    {
+        closeServer(serversToRemove[i]);
+    }
+    serversToRemove.clear();
+}
+
 int main(int argc, char* argv[])
 {
     get_local_ip(myIP);
+    //currTime=clock();
+    gettimeofday(&currTime, NULL);
+    struct timeval timer;
+    timer.tv_sec = 0;
+    timer.tv_usec = 1;
+    std::vector<int> clientsToRemove; // Will store the clients that we will need to remove.
+    std::vector<int> serversToRemove; // Will store servers that we will need to remove.
 
     if(argc != 2)
     {
@@ -1004,7 +1066,7 @@ int main(int argc, char* argv[])
     int listenPort;
     std::cout << "Please specify a port to open for client connections: ";
     std::cin >> listenPort;
-    name = name + "_" + std::to_string(serverPort); // REMOVE THIS BEFORE SUBMISSION, THIS IS ONLY FOR LOCAL TESTING.
+    //name = name + "_" + std::to_string(serverPort); // REMOVE THIS BEFORE SUBMISSION, THIS IS ONLY FOR LOCAL TESTING.
 
     listenClientSock = open_socket(listenPort);
     printf("Listening for client on port: %d\n", listenPort);
@@ -1020,21 +1082,56 @@ int main(int argc, char* argv[])
         maxfds = std::max(listenClientSock, listenServerSock);
     }
 
-    finished = false;
+    //gettimeofday(&end, NULL);
 
+    //long seconds  = end.tv_sec  - start.tv_sec;
+    //std::cout << "Second passed: " << seconds << std::endl;
+
+    finished = false;
     while(!finished)
     {
         // Get modifiable copy of readSockets
         readSockets = exceptSockets = openSockets;
         memset(buffer, 0, sizeof(buffer));
+        closeServers(serversToRemove);
+        /*for(int i = 0; i < serversToRemove.size(); i++)
+        {
+            closeServer(serversToRemove[i]);
+        }
+        serversToRemove.clear();*/
 
         // Look at sockets and see which ones have somePort to be read()
-        n = select(maxfds + 1, &readSockets, NULL, &exceptSockets, NULL);
-
+        n = select(maxfds + 1, &readSockets, NULL, &exceptSockets, &timer);
         if(n < 0)
         {
             perror("select failed - closing down\n");
             finished = true;
+        }
+        else if(n == 0)
+        {
+            gettimeofday(&currTime, NULL);
+             // Check if the times of servers.
+            for(auto const& pair : servers)
+            {
+                long timeSinceLastSent = currTime.tv_sec  - pair.second->lastSent.tv_sec; // Calculate when we last sent KEEPALIVE.
+                long timeSinceLastReceived = currTime.tv_sec - pair.second->lastReceived.tv_sec; // Calculate when we last sent KEEPALIVE.
+                // If there are 60 seconds since we sent a KEEPALIVE or 60 seconds since the server connected send KEEPALIVE<no. messages>.
+                //std::cout << "timeSinceLastSent" << timeSinceLastSent <<  std::endl;
+                if(timeSinceLastSent > 60.0)
+                {
+                    gettimeofday(&pair.second->lastSent, NULL);
+                    std::cout << "Sending KEEPALIVE,<no. messages>" << std::endl;
+                    sendKeepAlive(pair.second->name);
+                }
+                // If there are 90 seconds since we connected to the server and he hasnt sent us a KEEPALIVE<no. messages> we drop the connection.
+                if(timeSinceLastReceived > 90.0 && pair.second->markedForDeletion == true)
+                {
+                    std::cout << pair.second->name << " has been connected for " << timeSinceLastReceived << std::endl;
+                    pair.second->markedForDeletion = true; // Set value of lastReceived to -1 because we did not receive KEEPALIVE in time.
+                    std::cout << "Dropping the connection" << std::endl;
+                    serversToRemove.push_back(pair.second->sock); // Add the connection to removal list.
+                }
+            }
         }
         else
         {
@@ -1091,11 +1188,10 @@ int main(int argc, char* argv[])
                 }
                 
             }
+            closeServers(serversToRemove);
             // Now check for commands from clients
             while(n-- > 0)
             {
-                std::vector<int> clientsToRemove;
-                std::vector<int> serversToRemove;
                 for(auto const& pair : clients)
                 {
                     Client *client = pair.second;
@@ -1105,7 +1201,7 @@ int main(int argc, char* argv[])
                         // recv() == 0 means client has closed connection
                         if(recv(client->sock, buffer, sizeof(buffer), MSG_DONTWAIT) == 0)
                         {
-                            std::cout << "Server closed connection:" << client->sock << std::endl;
+                            std::cout << "Client closed connection:" << client->sock << std::endl;
                             close(client->sock);   
                             clientsToRemove.push_back(client->sock);
                         }
@@ -1123,6 +1219,7 @@ int main(int argc, char* argv[])
                 for(int i = 0; i < clientsToRemove.size(); i++)
                 {
                     closeServer(clientsToRemove[i]);
+                    clientsToRemove.clear();
                 }
                 for(auto const& pair : servers)
                 {
@@ -1134,7 +1231,7 @@ int main(int argc, char* argv[])
                         // recv() == 0 means client has closed connection
                         if(recv(server->sock, buffer, sizeof(buffer), MSG_DONTWAIT) == 0)
                         {
-                            std::cout << "Client closed connection:" << server->sock << std::endl;
+                            std::cout << "Server closed connection:" << server->sock << std::endl;
                             close(server->sock);   
                             serversToRemove.push_back(server->sock);
                         }
@@ -1179,10 +1276,7 @@ int main(int argc, char* argv[])
                         }
                     }
                 }
-                for(int i = 0; i < serversToRemove.size(); i++)
-                {
-                    closeServer(serversToRemove[i]);
-                }
+                closeServers(serversToRemove);
             }
         }
     }
