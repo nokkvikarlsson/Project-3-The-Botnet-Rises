@@ -1020,6 +1020,7 @@ int main(int argc, char* argv[])
             // Now check for commands from clients
             while(n-- > 0)
             {
+                std::vector<int> clientsToRemove;
                 std::vector<int> serversToRemove;
                 for(auto const& pair : clients)
                 {
@@ -1030,10 +1031,9 @@ int main(int argc, char* argv[])
                         // recv() == 0 means client has closed connection
                         if(recv(client->sock, buffer, sizeof(buffer), MSG_DONTWAIT) == 0)
                         {
-                            printf("Client closed connection: %d", client->sock);
-                            close(client->sock);      
-
-                            closeClient(client->sock, &openSockets, &maxfds);
+                            std::cout << "Server closed connection:" << client->sock << std::endl;
+                            close(client->sock);   
+                            clientsToRemove.push_back(client->sock);
                         }
                         // We don't check for -1 (nothing received) because select()
                         // only triggers if there is somePort on the socket for us.
@@ -1045,8 +1045,12 @@ int main(int argc, char* argv[])
                         }
                     }
                }
-               for(auto const& pair : servers)
-               {
+               for(int i = 0; i < clientsToRemove.size(); i++)
+                {
+                    closeServer(clientsToRemove[i]);
+                }
+                for(auto const& pair : servers)
+                {
                     Server *server = pair.second;
 
                     if(FD_ISSET(server->sock, &readSockets))
@@ -1055,20 +1059,9 @@ int main(int argc, char* argv[])
                         // recv() == 0 means client has closed connection
                         if(recv(server->sock, buffer, sizeof(buffer), MSG_DONTWAIT) == 0)
                         {
-                            std::cout << "Server closed connection:" << server->sock << std::endl;
-                            printf("Server closed connection: %d", server->sock);
-
+                            std::cout << "Client closed connection:" << server->sock << std::endl;
                             close(server->sock);   
                             serversToRemove.push_back(server->sock);
-                            //closeServer(server->sock, &openSockets, &maxfds);
-
-                            /*for(auto const& pair : servers)
-                            {
-                                if(pair.first == server->sock)
-                                {
-                                    servers.erase[pair.first];
-                                }
-                            }*/
                         }
                         // We don't check for -1 (nothing received) because select()
                         // only triggers if there is somePort on the socket for us.
