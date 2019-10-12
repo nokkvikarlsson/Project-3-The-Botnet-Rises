@@ -319,7 +319,7 @@ void closeClient(int clientSocket, fd_set *openSockets, int *maxfds)
 
 // Close a server's connection, remove it from the client list, and
 // tidy up select sockets afterwards.
-void closeServer(int serverSocket, fd_set *openSockets, int *maxfds)
+void closeServer(int serverSocket)
 {
      // Remove client from the clients list
      clients.erase(serverSocket);
@@ -328,16 +328,16 @@ void closeServer(int serverSocket, fd_set *openSockets, int *maxfds)
      // one has to be determined. Socket fd's can be reused by the Kernel,
      // so there aren't any nice ways to do this.
 
-     if(*maxfds == serverSocket)
+     if(maxfds == serverSocket)
      {
         for(auto const& p : clients)
         {
-            *maxfds = std::max(*maxfds, p.second->sock);
+            maxfds = std::max(maxfds, p.second->sock);
         }
      }
 
      // And remove from the list of open sockets.
-     FD_CLR(serverSocket, openSockets);
+     FD_CLR(serverSocket, &openSockets);
 }
 
 // Parsers buffer into tokens slpit by delimiter.
@@ -1020,12 +1020,13 @@ int main(int argc, char* argv[])
             // Now check for commands from clients
             while(n-- > 0)
             {
-               for(auto const& pair : clients)
-               {
-                  Client *client = pair.second;
+                std::vector<int> serversToRemove;
+                for(auto const& pair : clients)
+                {
+                    Client *client = pair.second;
 
-                  if(FD_ISSET(client->sock, &readSockets))
-                  {
+                    if(FD_ISSET(client->sock, &readSockets))
+                    {
                         // recv() == 0 means client has closed connection
                         if(recv(client->sock, buffer, sizeof(buffer), MSG_DONTWAIT) == 0)
                         {
@@ -1054,10 +1055,11 @@ int main(int argc, char* argv[])
                         // recv() == 0 means client has closed connection
                         if(recv(server->sock, buffer, sizeof(buffer), MSG_DONTWAIT) == 0)
                         {
-                            std::cout << "I AM HERE" << std::endl;
+                            std::cout << "Server closed connection:" << server->sock << std::endl;
                             printf("Server closed connection: %d", server->sock);
-                            close(server->sock);      
 
+                            close(server->sock);   
+                            serversToRemove.push_back(server->sock);
                             //closeServer(server->sock, &openSockets, &maxfds);
 
                             /*for(auto const& pair : servers)
@@ -1108,6 +1110,10 @@ int main(int argc, char* argv[])
                             } 
                         }
                     }
+                }
+                for(int i = 0; i < serversToRemove.size(); i++)
+                {
+                    closeServer(serversToRemove[i]);
                 }
             }
         }
