@@ -1059,7 +1059,7 @@ int main(int argc, char* argv[])
     gettimeofday(&currTime, NULL);
     struct timeval timer;
     timer.tv_sec = 0;
-    timer.tv_usec = 1;
+    timer.tv_usec = 0;
     std::vector<int> clientsToRemove; // Will store the clients that we will need to remove.
     std::vector<int> serversToRemove; // Will store servers that we will need to remove.
 
