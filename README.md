@@ -50,10 +50,12 @@ When our server receives a **SEND_MSG,<FROM_GROUP_ID>,<TO_GROUP_ID>,<MESSAGE_CON
 
 Our server sends a **KEEPALIVE<no. messages>** every 60 to a server after he has connected to him. If our server receives a **KEEPALIVE<no. messages>** and the no. of messages is greater than 0 then our server will send a **GET_MSG,<GROUP_ID>** to the server to get messages for him. If a directly connected server is connected and hasn't sent a **KEEPALIVE,<no. message>** in 5 minutes he sends a **LEAVE,<OUR_SERVER_IP>,<SERVER_LISTEN_PORT>** to the server and drops the connection.
 
-##Logging Messages
+#Logging Messages
 We logged every message we either sent or received into the following .txt files
 * *sentMessageLog.txt* includes all of the messages that we sent to other servers, with a timestamp of the time we sent it.
-* *receivedMessageLog.txt* includes all of the messages that we received from other servers, with a timestamp of the time we received it.
+* *receivedMessageLog.txt* includes all of the messages that we received from other servers, including the oracle, with a timestamp of the time we received it.
+
+We would also like to point out that we connected to two Akureyri groups (group 25 and group 69) and then we were also able to connect to a group located in Maryland USA (group 50), and we would like to make the argument that that group is remote enough to be put on the bounty list. 
 
 # Author
 Name: Nökkvi Karlsson & Egill Aron Þórisson.
