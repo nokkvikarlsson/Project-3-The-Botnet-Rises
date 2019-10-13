@@ -135,7 +135,8 @@ char myIP[32];
 int maxServerConnections = 5;         // The max number of direct server connections
 //clock_t currTime;                     // The current time, used to calculate if we need to process KEEPALIVE.
 struct timeval currTime;              // The current time, used to calculate if we need to process KEEPALIVE.
-
+std::vector<int> clientsToRemove; // Will store the clients that we will need to remove.
+std::vector<int> serversToRemove; // Will store servers that we will need to remove.
 
 //Fuction for logging messages to 2 files, send_mgs and get_msg
 void logMessage(std::string logType, std::string message)
@@ -582,7 +583,6 @@ void serverCommand(int serverSocket, char *buffer)
         }
         
         // Remove all empty servers from the map.
-        std::vector<int> serversToRemove;
         for(auto const& pair : servers)
         {
             // If we find a server with a empty name mark it for removal.
@@ -767,6 +767,25 @@ void serverCommand(int serverSocket, char *buffer)
             }
         }
     }
+
+    // If LEAVE,<SERVER_IP,PORT is received then disconnect only that IP/PORT
+    else if((tokens[0].compare("LEAVE") == 0) && (tokens.size() > 2))
+    {
+        std::cout << "LEAVE,SERVER_IP,PORT received" << std::endl;
+ 
+        for(auto const& pair : servers)
+        {
+            if(pair.second->ip == tokens[1] &&
+                pair.second->port == atoi(tokens[2].c_str()))
+            {
+                serversToRemove.push_back(serverSock);
+ 
+                std::cout << "IP " << tokens[1] << " and Port " <<
+                tokens[2].c_str() << " has been disconnected" << std::endl;
+            }
+        }
+    }
+
     else
     {
         std::cout << "Unknown command from server:" << buffer << std::endl;
@@ -1059,9 +1078,7 @@ int main(int argc, char* argv[])
     gettimeofday(&currTime, NULL);
     struct timeval timer;
     timer.tv_sec = 0;
-    timer.tv_usec = 0;
-    std::vector<int> clientsToRemove; // Will store the clients that we will need to remove.
-    std::vector<int> serversToRemove; // Will store servers that we will need to remove.
+    timer.tv_usec = 1;
 
     if(argc != 2)
     {
@@ -1148,7 +1165,7 @@ int main(int argc, char* argv[])
                     sendKeepAlive(pair.second->name);
                 }
                 // If there are 90 seconds since we connected to the server and he hasnt sent us a KEEPALIVE<no. messages> we drop the connection.
-                if(timeSinceLastReceived > 90.0 && pair.second->markedForDeletion == true)
+                if(timeSinceLastReceived > 90.0 && pair.second->markedForDeletion == false)
                 {
                     std::cout << pair.second->name << " has been connected for " << timeSinceLastReceived << std::endl;
                     pair.second->markedForDeletion = true; // Set value of lastReceived to -1 because we did not receive KEEPALIVE in time.
