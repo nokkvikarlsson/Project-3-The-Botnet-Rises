@@ -1014,7 +1014,7 @@ int main(int argc, char* argv[])
     int listenPort;
     std::cout << "Please specify a port to open for client connections: ";
     std::cin >> listenPort;
-    name = name + "_" + std::to_string(serverPort); // REMOVE THIS BEFORE SUBMISSION, THIS IS ONLY FOR LOCAL TESTING.
+    //name = name + "_" + std::to_string(serverPort); // REMOVE THIS BEFORE SUBMISSION, THIS IS ONLY FOR LOCAL TESTING.
 
     listenClientSock = open_socket(listenPort);
     printf("Listening for client on port: %d\n", listenPort);

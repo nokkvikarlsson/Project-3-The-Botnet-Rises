@@ -41,6 +41,7 @@ Now the client is connected to the server and you can type in commands in the cl
 * **STATUSREQ, <GROUP_ID>** Tells the server to send a STATUSREQ command to given GROUP_ID
 
 # How The Server Works (Design decisions)
+All commands are shown working with screenshots in the pdf file called *BotnetScreenshots* that were submited with the project.
 Here we will shortly explain some of the design decisions of how our server works that was not clear in the project description.
 
 When the server receives a **CONNECT <IP_OF_SERVER> <SERVER_LISTEN_PORT>** from the client he tries to establish a connection to the server at the given IP_OF_SERVER and SERVER_LISTEN_PORT. If a connection was established he then sends a **LISTSERVERS,<MY_GROUP_ID>** command to the newly connected server. The other server should send a list of his directly connected servers which our server also tries to establish a connection to up to a maximum of 5 total directly connected servers.
