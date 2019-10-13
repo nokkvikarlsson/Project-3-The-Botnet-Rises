@@ -617,7 +617,7 @@ void serverCommand(int serverSocket, char *buffer)
 
         msg += "STATUSRESP," + name;
         msg += "," + tokens[1];
-	for(auto const& pair : servers)
+	    for(auto const& pair : servers)
         {
             if(name != tokens[1] && messageVault[pair.second->name].size() != 0)
             {
@@ -629,7 +629,8 @@ void serverCommand(int serverSocket, char *buffer)
 
     else if((tokens[0].compare("STATUSRESP") == 0) && (tokens.size() > 2))
     {
-	std::cout << "STATUSRESP received" << std::endl;
+	    std::cout << "STATUSRESP received" << std::endl;
+        std::cout << buffer << std::endl;
     }
 
     // If SEND_MSG,<FROM_GROUP_ID>,<TO_GROUP_ID>,<message content> was received hold on to the message until someone gets the message.
@@ -811,7 +812,6 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
     {
         std::cout << "THIS IS THE SAME " << std::endl;
     }
-
     // Connect server to another server
     if((tokens[0].compare("CONNECT") == 0) && (tokens.size() == 3))
     {
@@ -853,15 +853,51 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
         // Send the message back to the client
         send(clientSocket, msg.c_str(), msg.length(), 0);
     }
-    else if(tokens[0].compare("LEAVE") == 0)
+   /* else if(tokens[0].compare("LEAVE") == 0)
     {
         // Close the socket, and leave the socket handling
         // code to deal with tidying up clients etc. when
         // select() detects the OS has torn down the connection.
  
         closeClient(clientSocket, openSockets, maxfds);
+    }*/
+    // If the command from the client was LEAVE, <GROUP_ID> send a LEAVE command to the server and drop connection to him.
+    else if(tokens[0].compare("LEAVE,") == 0  && (tokens.size() == 2))
+    {
+        std::cout << "LEAVE," << tokens[1] << " received." << std::endl;
+        // Find the server in our server map and send him a LEAVE command to notify him that we dropped his connection.
+        for(auto const& pair : servers)
+        {
+            if(pair.second->name == tokens[1])
+            {
+                std::cout << "SENDING LEAVE to " << tokens[1] << " and dropping the connection" << std::endl;
+                std::string msg = "";
+                std::string strIP = myIP;
+                msg = "LEAVE," + strIP + "," + std::to_string(serverPort); 
+                msg = addStartAndEnd(msg);
+                send(pair.second->sock, msg.c_str(), msg.length(),0);
+                serversToRemove.push_back(pair.second->sock);
+            }
+        }
     }
-    else if(tokens[0].compare("WHO") == 0)
+    // If the command is STATUSREQ, <GROUP_ID> send a STATUSREQ,<OUR_GROUP_ID> to the server.
+    else if(tokens[0].compare("STATUSREQ,") == 0  && (tokens.size() == 2))
+    {
+        std::cout << "STATUSREQ," << tokens[1] << " received" << std::endl;
+        for(auto const& pair : servers)
+        {
+            if(pair.second->name == tokens[1])
+            {
+                std::cout << "SENDING STATUSREQ to " << tokens[2] << std::endl;
+                std::string msg = "";
+                msg = "STATUSREQ," + name;
+                std::cout << "Sending to this guy" << std::endl;
+                msg = addStartAndEnd(msg);
+                send(pair.second->sock, msg.c_str(), msg.length(),0);
+            }
+        }
+    }
+   /* else if(tokens[0].compare("WHO") == 0)
     {
         std::cout << "Who is logged on" << std::endl;
         std::string msg;
@@ -903,7 +939,7 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
                 send(pair.second->sock, msg.c_str(), msg.length(),0);
             }
         }
-    }
+    }*/
     // If SEND_MSG, <GROUP_ID>, <message> was received hold on to the message until someone gets the message.
     else if((tokens[0].compare("SENDMSG,") == 0) && (tokens.size() > 2))
     {
@@ -1006,7 +1042,7 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
             std::cout << "The server is storing no messages for << " <<  receiver << std::endl;  
         }
     }
-    // TEST COMMNAD TO TEST SEND AND GET FUNCTIONALITY
+  /*  // TEST COMMNAD TO TEST SEND AND GET FUNCTIONALITY
     else if((tokens[0].compare("TESTSENDMSG,") == 0))
     {
         std::string receiver = tokens[1];
@@ -1054,7 +1090,7 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
         msg = addStartAndEnd(msg);
         std::cout << "sending this: " << msg << std::endl;
         send(sock, msg.c_str(), msg.length(),0);
-    }
+    }*/
     else
     {
         std::cout << "Unknown command from client:" << buffer << std::endl;
@@ -1107,7 +1143,7 @@ int main(int argc, char* argv[])
     int listenPort;
     std::cout << "Please specify a port to open for client connections: ";
     std::cin >> listenPort;
-    //name = name + "_" + std::to_string(serverPort); // REMOVE THIS BEFORE SUBMISSION, THIS IS ONLY FOR LOCAL TESTING.
+    name = name + "_" + std::to_string(serverPort); // REMOVE THIS BEFORE SUBMISSION, THIS IS ONLY FOR LOCAL TESTING.
 
     listenClientSock = open_socket(listenPort);
     printf("Listening for client on port: %d\n", listenPort);
@@ -1123,11 +1159,6 @@ int main(int argc, char* argv[])
         maxfds = std::max(listenClientSock, listenServerSock);
     }
 
-    //gettimeofday(&end, NULL);
-
-    //long seconds  = end.tv_sec  - start.tv_sec;
-    //std::cout << "Second passed: " << seconds << std::endl;
-
     finished = false;
     while(!finished)
     {
@@ -1135,11 +1166,6 @@ int main(int argc, char* argv[])
         readSockets = exceptSockets = openSockets;
         memset(buffer, 0, sizeof(buffer));
         closeServers(serversToRemove);
-        /*for(int i = 0; i < serversToRemove.size(); i++)
-        {
-            closeServer(serversToRemove[i]);
-        }
-        serversToRemove.clear();*/
 
         // Look at sockets and see which ones have somePort to be read()
         n = select(maxfds + 1, &readSockets, NULL, &exceptSockets, &timer);
@@ -1150,14 +1176,13 @@ int main(int argc, char* argv[])
         }
         else if(n == 0)
         {
-            gettimeofday(&currTime, NULL);
-             // Check if the times of servers.
+            gettimeofday(&currTime, NULL); // Always set CurrTime to the current time.
+             // Check if the time differenec for servers to CurrTime.
             for(auto const& pair : servers)
             {
                 long timeSinceLastSent = currTime.tv_sec  - pair.second->lastSent.tv_sec; // Calculate when we last sent KEEPALIVE.
                 long timeSinceLastReceived = currTime.tv_sec - pair.second->lastReceived.tv_sec; // Calculate when we last sent KEEPALIVE.
                 // If there are 60 seconds since we sent a KEEPALIVE or 60 seconds since the server connected send KEEPALIVE<no. messages>.
-                //std::cout << "timeSinceLastSent" << timeSinceLastSent <<  std::endl;
                 if(timeSinceLastSent > 60.0)
                 {
                     gettimeofday(&pair.second->lastSent, NULL);
@@ -1170,6 +1195,11 @@ int main(int argc, char* argv[])
                     std::cout << pair.second->name << " has been connected for " << timeSinceLastReceived << std::endl;
                     pair.second->markedForDeletion = true; // Set value of lastReceived to -1 because we did not receive KEEPALIVE in time.
                     std::cout << "Dropping the connection" << std::endl;
+                    std::string msg = "";
+                    std::string strIP = myIP;
+                    msg = "LEAVE," + strIP + "," + std::to_string(serverPort); 
+                    msg = addStartAndEnd(msg);
+                    send(pair.second->sock, msg.c_str(), msg.length(), 0); // Let the server know that we are dropping the connection.
                     serversToRemove.push_back(pair.second->sock); // Add the connection to removal list.
                 }
             }
@@ -1283,12 +1313,6 @@ int main(int argc, char* argv[])
                             // Tokenize the buffer by start and end characters, because more then one command might be in the buffer.
                             std::string strBuffer = buffer;
                             bool keepLooping = true;
-
-                            // THIS IS ONLY FOR TESTING CONSOLE COMMANDS AS SERVER COMMANDS
-                            /*if(strBuffer.find((char)0x01) == std::string::npos && strBuffer.find((char)0x04) == std::string::npos)
-                            {
-                                    strBuffer = addStartAndEnd(strBuffer);
-                            }*/
 
                             while(strBuffer.size() > 0 && keepLooping)
                             {

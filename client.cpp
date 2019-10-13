@@ -99,6 +99,14 @@ int main(int argc, char* argv[])
        exit(0);
    }
 
+    std::cout << std::endl << "Available commands for the client" << std::endl << std::endl;
+    std::cout << "CONNECT <IP> <PORT> : Tell the server to connect to another server on the given IP address and port." << std::endl;
+    std::cout << "LISTSERVERS : Prints all the directly(1-hop) connected servers to the server the client is connected to." << std::endl;
+    std::cout << "SENDMSG, <GROUP_ID>, <message contents> : Sends the given message contents to the given GROUP_ID." << std::endl;
+    std::cout << "GETMSG, <GROUP_ID> : Gets a single message from the server for the given GROUP_ID" << std::endl;
+    std::cout << "STATUSREQ, <GROUP_ID> : Tells the server to send a STATUSREQ command to given GROUP_ID" << std::endl;
+    std::cout << "LEAVE, <GROUP_ID> : Tells the servers to send a LEAVE,<IP_OF_OUR_SERVER>,<PORT_OF_OUR_SERVER> to the given GROUP_ID" << std::endl << std::endl;
+
    struct hostent *server;
    server = gethostbyname(argv[1]);
 
