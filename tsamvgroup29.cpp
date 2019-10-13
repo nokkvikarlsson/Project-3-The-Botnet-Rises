@@ -459,6 +459,7 @@ bool checkIfEmpty(char *buffer)
 // Process commands from servers on server. (Sorry for the length of this function)
 void serverCommand(int serverSocket, char *buffer)
 {
+    std::cout << "This is the buffer before processing it in serverCommands: " << buffer << std::endl;
     std::string strBuffer = buffer; // Store the buffer as a string.
     // Parse the string into tokens using "," as a delimiter.
     std::vector<std::string> tokens = parseString(",", buffer);
@@ -626,6 +627,7 @@ void serverCommand(int serverSocket, char *buffer)
     // If STATUSREQ,<FROM_GROUP_ID was received then reply to the GROUP_ID with the corresponding STATUSRESP
     else if((tokens[0].compare("STATUSREQ") == 0) && (tokens.size() == 2))
     {
+        std::cout << "Received STATUSREQ" << std::endl;
         std::string msg = "";
         msg += "STATUSRESP," + name;
         msg += "," + tokens[1];
@@ -636,6 +638,7 @@ void serverCommand(int serverSocket, char *buffer)
                 msg += "," + pair.second->name + "," + std::to_string(messageVault[pair.second->name].size());
             }
         }
+        msg = addStartAndEnd(msg);
         send(serverSock, msg.c_str(), msg.length(), 0);
     }
 
@@ -866,10 +869,9 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
         {
             if(pair.second->name == tokens[1])
             {
-                std::cout << "SENDING STATUSREQ to " << tokens[2] << std::endl;
+                std::cout << "SENDING STATUSREQ to " << tokens[1] << std::endl;
                 std::string msg = "";
                 msg = "STATUSREQ," + name;
-                std::cout << "Sending to this guy" << std::endl;
                 msg = addStartAndEnd(msg);
                 send(pair.second->sock, msg.c_str(), msg.length(),0);
             }
@@ -1055,6 +1057,7 @@ int main(int argc, char* argv[])
                 if(timeSinceLastSent > 60.0)
                 {
                     gettimeofday(&pair.second->lastSent, NULL);
+                    std::cout << "******************************" << std::endl;
                     sendKeepAlive(pair.second->name);
                 }
                 // If there are 90 seconds since we connected to the server and he hasnt sent us a KEEPALIVE<no. messages> we drop the connection.
@@ -1096,8 +1099,6 @@ int main(int argc, char* argv[])
             // Second, accept any new connections to the server from other servers from the listen Server socket
             if(FD_ISSET(listenServerSock, &readSockets))
             {
-                std::cout << "THIS IS THE SIZE OF THE MAP: " << servers.size() << std::endl;
-
                 serverSock = accept(listenServerSock, (struct sockaddr *)&server,
                                     &serverLen);
 
@@ -1150,6 +1151,7 @@ int main(int argc, char* argv[])
                         else
                         {
                             clientSock = client->sock;
+                            std::cout << "******************************" << std::endl;
                             clientCommand(client->sock, &openSockets, &maxfds, 
                                         buffer);
                         }
@@ -1177,7 +1179,7 @@ int main(int argc, char* argv[])
                         // We don't check for -1 (nothing received) because select()
                         // only triggers if there is somePort on the socket for us.
                         else
-                        {
+                        {   
                             // Tokenize the buffer by start and end characters, because more then one command might be in the buffer.
                             std::string strBuffer = buffer;
                             bool keepLooping = true;
@@ -1193,6 +1195,7 @@ int main(int argc, char* argv[])
                                     std::string strbetweenTwoDels = strBuffer.substr(firstDelPos+1, secondDelPos-firstDelPos-1); 
                                     strBuffer = strBuffer.erase(firstDelPos, (secondDelPos-firstDelPos)+1);
                                     serverSock = server->sock;
+                                    std::cout << "******************************" << std::endl;
                                     serverCommand(server->sock, (char*)strbetweenTwoDels.c_str());
                                 }
                                 else
