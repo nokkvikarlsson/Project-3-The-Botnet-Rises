@@ -33,7 +33,7 @@
 #include <ctime>
 #include <fstream>
 
-#define _BSD_SOURCE
+//#define _BSD_SOURCE
 #include <sys/time.h>
 
 // fix SOCK_NONBLOCK for OSX
@@ -110,8 +110,8 @@ class Message
 // Quite often a simple array can be used as a lookup table, 
 // (indexed on socket no.) sacrificing memory for speed.
 
-std::map<int, Client*> clients; // Lookup table for per Client information
-std::map<int, Server*> servers; // Lookup table for per Server information
+std::map<int, Client*> clients;                           // Lookup table for per Client information
+std::map<int, Server*> servers;                           // Lookup table for per Server information
 std::map<std::string, std::vector<Message>> messageVault; // Stores messages for groups, the key is the group_ID the messages are for.
 
 bool finished;
@@ -133,10 +133,9 @@ int serverPort;                       // Port that is used to listen for server 
 std::string name = "P3_GROUP_29";     // Stores group ID of our server.
 char myIP[32];
 int maxServerConnections = 5;         // The max number of direct server connections
-//clock_t currTime;                     // The current time, used to calculate if we need to process KEEPALIVE.
 struct timeval currTime;              // The current time, used to calculate if we need to process KEEPALIVE.
-std::vector<int> clientsToRemove; // Will store the clients that we will need to remove.
-std::vector<int> serversToRemove; // Will store servers that we will need to remove.
+std::vector<int> clientsToRemove;     // Will store the clients that we will need to remove.
+std::vector<int> serversToRemove;     // Will store servers that we will need to remove.
 
 //Fuction for logging messages to 2 files, send_mgs and get_msg
 void logMessage(std::string logType, std::string message)
@@ -267,6 +266,7 @@ void get_local_ip(char *buffer) {
     close(sock);
 }
 
+// Adds the start and end characters of a message.
 std::string addStartAndEnd(std::string msg)
 {
     std::string start = "";
@@ -280,6 +280,7 @@ std::string addStartAndEnd(std::string msg)
     return retMsg;
 }
 
+// Tries to connect to a server on a given ipAddr and portNo, return the socket the connection is established on but -1 if it fails.
 int connectServer(const char * ipAddr, const char * portNo)
 {
     struct addrinfo hints, *svr;              // Network host entry for server
@@ -435,13 +436,35 @@ void sendKeepAlive(std::string name)
     }
 }
 
-// Process commands from servers on server.
+// Checks if the character array only contains whitespace.
+bool checkIfEmpty(char *buffer)
+{
+    bool empty = true;
+    std::string checkBuffer = buffer;
+    for(int i = 0; i < checkBuffer.length(); i++)
+    {
+        if(!isspace(checkBuffer[i]))
+        {
+            empty = false;
+        }
+    }
+    if(empty)
+    {
+        return true;
+    }
+
+    return false;
+}
+
+// Process commands from servers on server. (Sorry for the length of this function)
 void serverCommand(int serverSocket, char *buffer)
 {
     std::string strBuffer = buffer; // Store the buffer as a string.
     // Parse the string into tokens using "," as a delimiter.
     std::vector<std::string> tokens = parseString(",", buffer);
-    std::cout << "TOKENS[0]: " << tokens[0] << std::endl;
+
+    if(checkIfEmpty(buffer))
+        return;
 
     // Sends 1-hop connected servers back to the serverSocket.
     if((tokens[0].compare("LISTSERVERS") == 0) && (tokens.size() == 2))
@@ -475,7 +498,6 @@ void serverCommand(int serverSocket, char *buffer)
         bool exist = false;
         for(auto const& pair : servers)
         {   
-            std::cout << "this is pair.second->name: " << pair.second->name << " this is tokens[1]: " << tokens[1] << std::endl; 
             if(pair.second->name == tokens[1])
             {
                 exist = true;
@@ -547,7 +569,6 @@ void serverCommand(int serverSocket, char *buffer)
                         // If name is found in the map don't try to connect to it's associated server.
                         if(server->name == serv.name)
                         {
-                            std::cout << "I am already connected to him: " << server->name << std::endl;
                             add = false;
                         }
                     }
@@ -576,12 +597,6 @@ void serverCommand(int serverSocket, char *buffer)
                 }
             }
         }
-        else
-        {
-            std::cout << "I am connected to too many servers :/" << std::endl;
-            std::cout << "The size of the map is: " << servers.size() << std::endl;
-        }
-        
         // Remove all empty servers from the map.
         for(auto const& pair : servers)
         {
@@ -608,13 +623,10 @@ void serverCommand(int serverSocket, char *buffer)
         }
         serversToRemove.clear();
     }
-
     // If STATUSREQ,<FROM_GROUP_ID was received then reply to the GROUP_ID with the corresponding STATUSRESP
     else if((tokens[0].compare("STATUSREQ") == 0) && (tokens.size() == 2))
     {
-        std::cout << "STATUSREQ received" << std::endl;
         std::string msg = "";
-
         msg += "STATUSRESP," + name;
         msg += "," + tokens[1];
 	    for(auto const& pair : servers)
@@ -637,7 +649,6 @@ void serverCommand(int serverSocket, char *buffer)
     else if((tokens[0].compare("SEND_MSG") == 0) && (tokens.size() > 3))
     {
         logMessage("RECEIVED", buffer);
-        std::cout << "SEND_MSG received" << std::endl;
         std::string msg = ""; // Will store message parsed from the client command.
         std::string sender = tokens[1];
         std::string receiver = tokens[2];
@@ -655,25 +666,13 @@ void serverCommand(int serverSocket, char *buffer)
                 msg += " " + tokens[i];
             }
         }
-
-        std::cout << "+++++++++++To summarize++++++++++" << std::endl;
-        std::cout << "This is the message: " << msg << std::endl;
-        std::cout << "This is the group_ID of the SENDER: " << sender << std::endl;
-        std::cout << "This is the group_ID of the RECEIVER: " << receiver << std::endl;
-        std::cout << "This is the message: " << msg << std::endl;
         
-        // If the message had the server's as the destination ID then send the message back to the client.
-        std::cout << "This is tokens[1] " << tokens[1] <<std::endl;
-        std::cout << "This is name " << name << std::endl;
-
-        std::cout << "Message received that's for: " << receiver << ", from: " << sender << std::endl; 
+        std::cout << "Received message from: " << sender << ", to: receiver" << receiver << ", message contents: " << msg << std::endl;
 
         // Check if the servers is directly connected, if not then store the message.
         bool connected;
-        std::cout << "Checking if we are directly connected to:" << receiver << std::endl;
         for(auto const& pair : servers)
         {
-            std::cout << "comaparing this: |" << pair.second->name << "| tothis: |" << receiver << "|" << std::endl;
             if(pair.second->name == receiver)
             {   
                 connected = true;
@@ -683,7 +682,7 @@ void serverCommand(int serverSocket, char *buffer)
         // If the receiver servers is 1-hop away then send directly to him
         if(connected)
         {
-            std::cout << "Forwarding message to this sock" << forwardSock << " with this name: " << std::endl;
+            std::cout << "Forwarding the message to this server: " << receiver << ", message contents:  " << msg << std::endl;
             std::string forwardMsg = "";
             // SEND MSG,<FROM GROUP ID>,<TO GROUP ID>,<Message content>
             forwardMsg += "SEND_MSG," + sender + "," + receiver + "," + msg;
@@ -694,27 +693,24 @@ void serverCommand(int serverSocket, char *buffer)
         // Else we store the message until someone retreives it.
         else
         {
+            std::cout << "We are not connected to: " << receiver << ", we store the message until someone gets it." << std::endl;
             // Check if the map contains any a key for this receiver ID, if not add it.
             if(messageVault.find(receiver) == messageVault.end())
             {
-                std::cout << receiver << " was not found, we create him in the vault" << std::endl;
-                std::cout << "We are growing the map :D " << std::endl;
                 std::vector<Message> messages;
                 Message message = Message(sender, msg);
                 messages.push_back(message);
                 messageVault[receiver] = messages;
+                std::cout << receiver << " has this many messages in our storage: " << messageVault[receiver].size() << std::endl;
             }
             // If the receiver ID is already in the map then add it to the vector of messages associated with him.
             else
             {
-                std::cout << receiver << " was found we add the message to his vault" << std::endl;
                 Message message = Message(sender, msg);
                 messageVault[receiver].push_back(message);
+                std::cout << receiver << " has this many messages in our storage: " << messageVault[receiver].size() << std::endl;
             }
-        }
-        
-        std::cout << "The size of the map: " << messageVault.size() << std::endl;
-        std::cout << receiver << " has this many messages: " << messageVault[receiver].size() << std::endl;
+        }        
     }
     // If GET_MSG,<FROM_GROUP_ID> is received then check in out messageVault map if we have any messages for that ID
     else if((tokens[0].compare("GET_MSG") == 0) && (tokens.size() > 1))
@@ -730,24 +726,22 @@ void serverCommand(int serverSocket, char *buffer)
 
         std::cout << "+++++++++++To summarize++++++++++" << std::endl;
         std::cout << "This is the group_ID: " << name << std::endl;
-
-        // If the message had the server's as the destination ID then send the message back to the client.
     
         // Send back all messages for that GROUP_ID and erase from our message vault afterwards.
-        std::cout << receiver << " has this many messages: " << messageVault[receiver].size() << std::endl;
+        std::cout << "Sending all stored messages for: " << receiver <<  std::endl;
+        std::cout << receiver << " has this many messages after sending them: " << messageVault[receiver].size() << std::endl;
         if(messageVault[receiver].size() > 0)
         {
             for(int i = 0; i < messageVault[receiver].size(); i++)
             {
                 msg = "SEND_MSG," + messageVault[receiver][i].sender + "," + receiver + "," +  messageVault[receiver][i].msg;
-                std::cout << "This is the message I am sending: " << msg << std::endl;
                 logMessage("SENT", msg);
                 msg = addStartAndEnd(msg);
                 send(serverSock, msg.c_str(), msg.length(),0);
             }
             messageVault.erase(receiver);
-            std::cout << receiver << " has this many messages after sending them: " << messageVault[receiver].size() << std::endl;
         }
+        std::cout << receiver << " has this many messages after sending them: " << messageVault[receiver].size() << std::endl;
     }
     else if((tokens[0].compare("KEEPALIVE") == 0) && (tokens.size() == 2))
     {
@@ -756,7 +750,7 @@ void serverCommand(int serverSocket, char *buffer)
             std::string msg = "";
             msg += "GET_MSG," + name;
             msg = addStartAndEnd(msg);
-            std::cout << "Sending a GET_MSG, to get my messages " << std::endl;
+            std::cout << "Sending a GET_MSG, to get my messages." << std::endl;
             send(serverSock, msg.c_str(), msg.length(),0);
         }
 
@@ -764,29 +758,24 @@ void serverCommand(int serverSocket, char *buffer)
         {
             if(pair.second->sock == serverSock)
             {
+                std::cout << "KEEPALIVE RECEIVED FROM GROUP: " << pair.second->name << std::endl;
                 gettimeofday(&pair.second->lastReceived, NULL);
             }
         }
     }
-
     // If LEAVE,<SERVER_IP,PORT is received then disconnect only that IP/PORT
     else if((tokens[0].compare("LEAVE") == 0) && (tokens.size() > 2))
-    {
-        std::cout << "LEAVE,SERVER_IP,PORT received" << std::endl;
- 
+    { 
         for(auto const& pair : servers)
         {
             if(pair.second->ip == tokens[1] &&
                 pair.second->port == atoi(tokens[2].c_str()))
             {
                 serversToRemove.push_back(serverSock);
- 
-                std::cout << "IP " << tokens[1] << " and Port " <<
-                tokens[2].c_str() << " has been disconnected" << std::endl;
+                std::cout << "IP " << tokens[1] << " and Port " << tokens[2].c_str() << " has been disconnected" << std::endl;
             }
         }
     }
-
     else
     {
         std::cout << "Unknown command from server:" << buffer << std::endl;
@@ -806,12 +795,9 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
     while(stream >> token)
         tokens.push_back(token);
 
-    std::cout << "Token[0] is this: " << tokens[0] <<std::endl;
+    if(checkIfEmpty(buffer))
+        return;
 
-    if(tokens[0] == ("GETMSG,"))
-    {
-        std::cout << "THIS IS THE SAME " << std::endl;
-    }
     // Connect server to another server
     if((tokens[0].compare("CONNECT") == 0) && (tokens.size() == 3))
     {
@@ -853,14 +839,6 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
         // Send the message back to the client
         send(clientSocket, msg.c_str(), msg.length(), 0);
     }
-   /* else if(tokens[0].compare("LEAVE") == 0)
-    {
-        // Close the socket, and leave the socket handling
-        // code to deal with tidying up clients etc. when
-        // select() detects the OS has torn down the connection.
- 
-        closeClient(clientSocket, openSockets, maxfds);
-    }*/
     // If the command from the client was LEAVE, <GROUP_ID> send a LEAVE command to the server and drop connection to him.
     else if(tokens[0].compare("LEAVE,") == 0  && (tokens.size() == 2))
     {
@@ -897,49 +875,6 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
             }
         }
     }
-   /* else if(tokens[0].compare("WHO") == 0)
-    {
-        std::cout << "Who is logged on" << std::endl;
-        std::string msg;
-
-        for(auto const& names : clients)
-        {
-            msg += names.second->name + ",";
-        }
-        // Reducing the msg length by 1 loses the excess "," - which
-        // granted is totally cheating.
-        send(clientSocket, msg.c_str(), msg.length()-1, 0);
-    }
-    // This is slightly fragile, since it's relying on the order
-    // of evaluation of the if statement.
-    else if((tokens[0].compare("MSG") == 0) && (tokens[1].compare("ALL") == 0))
-    {
-        std::string msg;
-        for(auto i = tokens.begin()+2;i != tokens.end();i++) 
-        {
-            msg += *i + " ";
-        }
-
-        for(auto const& pair : clients)
-        {
-            send(pair.second->sock, msg.c_str(), msg.length(),0);
-        }
-    }
-    else if(tokens[0].compare("MSG") == 0)
-    {
-        for(auto const& pair : clients)
-        {
-            if(pair.second->name.compare(tokens[1]) == 0)
-            {
-                std::string msg;
-                for(auto i = tokens.begin()+2;i != tokens.end();i++) 
-                {
-                    msg += *i + " ";
-                }
-                send(pair.second->sock, msg.c_str(), msg.length(),0);
-            }
-        }
-    }*/
     // If SEND_MSG, <GROUP_ID>, <message> was received hold on to the message until someone gets the message.
     else if((tokens[0].compare("SENDMSG,") == 0) && (tokens.size() > 2))
     {
@@ -966,21 +901,12 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
             }
         }
 
-        std::cout << "+++++++++++To summarize++++++++++" << std::endl;
-        std::cout << "This is the command: " << tokens[0] << std::endl;
-        std::cout << "This is the group_ID: " << receiver << std::endl;
-        std::cout << "This is my name: " << name << std::endl;
-        std::cout << "This is the message: " << msg << std::endl;
-
         // Check if the servers is directly connected, if not then store the message.
-        bool connected;
-        std::cout << "Checking if we are directly connected to:" << receiver << std::endl;
+        bool connected = false;
         for(auto const& pair : servers)
         {
-            std::cout << "comaparing this: |" << pair.second->name << "| tothis: |" << receiver << "|" << std::endl;
             if(pair.second->name == receiver)
             {   
-                std::cout << "I should be here" << std::endl;
                 connected = true;
                 forwardSock = pair.second->sock;
             }
@@ -988,7 +914,7 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
         // If the receiver servers is 1-hop away then send directly to him
         if(connected)
         {
-            std::cout << "sending to this sock" << forwardSock << std::endl;
+            std::cout << "Sending a message to this server: " << receiver << ", message contents:  " << msg << std::endl;
             std::string forwardMsg = "";
             // SEND MSG,<FROM GROUP ID>,<TO GROUP ID>,<Message content>
             forwardMsg += "SEND_MSG," + name + "," + receiver + "," + msg;
@@ -999,10 +925,10 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
         // Else store the message until he gets it.
         else
         {
+            std::cout << "Storing a message for this server: " << receiver << ", message contents:  " << msg << std::endl;
             // Check if the map contains any a key for this receiver ID, if not add it.
             if(messageVault.find(receiver) == messageVault.end())
             {
-                std::cout << "We are growing the map :D " << std::endl;
                 std::vector<Message> messages;
                 Message message = Message(name, msg);
                 messages.push_back(message);
@@ -1015,26 +941,19 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
                 messageVault[receiver].push_back(message);
             }
         }
-        
-        std::cout << "The size of the map: " << messageVault.size() << std::endl;
-        std::cout << receiver << " has this many messages: " << messageVault[receiver].size() << std::endl;
     }
     // GETMSG, <GROUP_ID>. Gets one message for the group from the message vault and sends it to the server.
     else if((tokens[0].compare("GETMSG,") == 0) && (tokens.size() > 1))
     {
         std::string receiver = tokens[1];
         std::string msg = "";
-
-        std::cout << "This is the group_ID: " << receiver << std::endl;
     
         // If receiver is the server himself then check if the server is storing any messages from the client to himself.
-        std::cout << "He has this many messages: " << messageVault[receiver].size() << std::endl;
+       
         if(messageVault[receiver].size() > 0)
         {   
-            std::cout << "size of vector: " <<  messageVault[receiver].size() << std::endl;
             msg = messageVault[receiver][messageVault[receiver].size()-1].msg;
             messageVault[receiver].pop_back();
-            std::cout << "size of vector: " <<  messageVault[receiver].size() << std::endl;
             send(clientSock, msg.c_str(), msg.length(),0);
         }
         else
@@ -1042,55 +961,6 @@ void clientCommand(int clientSocket, fd_set *openSockets, int *maxfds,
             std::cout << "The server is storing no messages for << " <<  receiver << std::endl;  
         }
     }
-  /*  // TEST COMMNAD TO TEST SEND AND GET FUNCTIONALITY
-    else if((tokens[0].compare("TESTSENDMSG,") == 0))
-    {
-        std::string receiver = tokens[1];
-        int sock = 0;
-        std::string msg = "";
-
-        std::cout << "This is the receiver: " << receiver << std::endl;
-    
-        msg += "SEND_MSG," + name + "," + tokens[1] + ",HEY HOMO, BROOO";
-        logMessage("SENT", msg);
-
-        for(auto const& pair : servers)
-        {
-            std::cout << "This is the pair.second->name: " << pair.second->name << std::endl;
-            if(pair.second->name == receiver)
-            {
-                sock = pair.second->sock;
-                std::cout << "This is the socket: " << sock << std::endl;
-            }
-        }
-        msg = addStartAndEnd(msg);
-        std::cout << "sending this: " << msg << std::endl;
-        send(sock, msg.c_str(), msg.length(),0);
-    }
-    else if((tokens[0].compare("TESTGETMSG,") == 0))
-    {
-        std::string receiver = tokens[1];
-        std::string from = tokens[2];
-        int sock = 0;
-        std::string msg = "";
-
-        std::cout << "This is the receiver: " << receiver << std::endl;
-    
-        msg += "GET_MSG,"  + receiver;
-
-        for(auto const& pair : servers)
-        {
-            std::cout << "This is the pair.second->name: " << pair.second->name << std::endl;
-            if(pair.second->name == receiver)
-            {
-                sock = pair.second->sock;
-                std::cout << "This is the socket: " << sock << std::endl;
-            }
-        }
-        msg = addStartAndEnd(msg);
-        std::cout << "sending this: " << msg << std::endl;
-        send(sock, msg.c_str(), msg.length(),0);
-    }*/
     else
     {
         std::cout << "Unknown command from client:" << buffer << std::endl;
@@ -1110,7 +980,6 @@ void closeServers(std::vector<int> serversToRemove)
 int main(int argc, char* argv[])
 {
     get_local_ip(myIP);
-    //currTime=clock();
     gettimeofday(&currTime, NULL);
     struct timeval timer;
     timer.tv_sec = 0;
@@ -1186,15 +1055,13 @@ int main(int argc, char* argv[])
                 if(timeSinceLastSent > 60.0)
                 {
                     gettimeofday(&pair.second->lastSent, NULL);
-                    std::cout << "Sending KEEPALIVE,<no. messages>" << std::endl;
                     sendKeepAlive(pair.second->name);
                 }
                 // If there are 90 seconds since we connected to the server and he hasnt sent us a KEEPALIVE<no. messages> we drop the connection.
-                if(timeSinceLastReceived > 90.0 && pair.second->markedForDeletion == false)
+                if(timeSinceLastReceived > 300.0 && pair.second->markedForDeletion == false)
                 {
-                    std::cout << pair.second->name << " has been connected for " << timeSinceLastReceived << std::endl;
                     pair.second->markedForDeletion = true; // Set value of lastReceived to -1 because we did not receive KEEPALIVE in time.
-                    std::cout << "Dropping the connection" << std::endl;
+                    std::cout << "No KEEPALIVE received in" << timeSinceLastReceived << "seconds, dropping the connection of server: " << pair.second->name << std::endl;
                     std::string msg = "";
                     std::string strIP = myIP;
                     msg = "LEAVE," + strIP + "," + std::to_string(serverPort); 
@@ -1233,6 +1100,8 @@ int main(int argc, char* argv[])
 
                 serverSock = accept(listenServerSock, (struct sockaddr *)&server,
                                     &serverLen);
+
+                // Drop connection if we have reached max connections.
                 if(servers.size() >= maxServerConnections)
                 {
                     close(serverSock);
@@ -1280,8 +1149,7 @@ int main(int argc, char* argv[])
                         // only triggers if there is somePort on the socket for us.
                         else
                         {
-                            std::cout << "The size of the clients map: " << clients.size() << std::endl;
-                            std::cout << "This is the buffer before calling client command: " << buffer << std::endl;
+                            clientSock = client->sock;
                             clientCommand(client->sock, &openSockets, &maxfds, 
                                         buffer);
                         }
@@ -1313,22 +1181,17 @@ int main(int argc, char* argv[])
                             // Tokenize the buffer by start and end characters, because more then one command might be in the buffer.
                             std::string strBuffer = buffer;
                             bool keepLooping = true;
-
                             while(strBuffer.size() > 0 && keepLooping)
                             {
                                 if(strBuffer.find((char)0x01) != std::string::npos && strBuffer.find((char)0x04) != std::string::npos)
                                 {
-                                    std::cout << "******************************" << std::endl;
                                     // Find the position of first delimiter 
                                     int firstDelPos = strBuffer.find((char)0x01);
                                     // Find the position of second delimiter
                                     int secondDelPos = strBuffer.find((char)0x04);
                                     // Get the substring between two delimiters
                                     std::string strbetweenTwoDels = strBuffer.substr(firstDelPos+1, secondDelPos-firstDelPos-1); 
-
                                     strBuffer = strBuffer.erase(firstDelPos, (secondDelPos-firstDelPos)+1);
-
-                                    std::cout << "Processing this command: " << strbetweenTwoDels << std::endl;
                                     serverSock = server->sock;
                                     serverCommand(server->sock, (char*)strbetweenTwoDels.c_str());
                                 }

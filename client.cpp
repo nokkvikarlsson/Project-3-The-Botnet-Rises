@@ -105,7 +105,7 @@ int main(int argc, char* argv[])
     std::cout << "SENDMSG, <GROUP_ID>, <message contents> : Sends the given message contents to the given GROUP_ID." << std::endl;
     std::cout << "GETMSG, <GROUP_ID> : Gets a single message from the server for the given GROUP_ID" << std::endl;
     std::cout << "STATUSREQ, <GROUP_ID> : Tells the server to send a STATUSREQ command to given GROUP_ID" << std::endl;
-    std::cout << "LEAVE, <GROUP_ID> : Tells the servers to send a LEAVE,<IP_OF_OUR_SERVER>,<PORT_OF_OUR_SERVER> to the given GROUP_ID" << std::endl << std::endl;
+    std::cout << "LEAVE, <GROUP_ID> : Tell the servers to send a LEAVE,<IP_OF_OUR_SERVER>,<PORT_OF_OUR_SERVER> to the given GROUP_ID" << std::endl << std::endl;
 
    struct hostent *server;
    server = gethostbyname(argv[1]);
