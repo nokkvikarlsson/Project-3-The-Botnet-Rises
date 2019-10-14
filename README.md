@@ -52,11 +52,65 @@ Our server sends a **KEEPALIVE<no. messages>** every 60 to a server after he has
 
 #Logging Messages
 We logged every message we either sent or received into the following .txt files
-* *sentMessageLog.txt* includes all of the messages that we sent to other servers, with a timestamp of the time we sent it.
-* *receivedMessageLog.txt* includes all of the messages that we received from other servers, including the oracle, with a timestamp of the time we received it.
+* *sentMessageLog.txt* includes all of the messages that we sent to other servers, with a timestamp of the time we sent it. We sent messages to 32 unique groups. The groups we sent to in are:
+P3_GROUP_0
+P3_GROUP_109
+P3_GROUP_111
+P3_GROUP_13
+P3_GROUP_14
+P3_GROUP_16
+P3_GROUP_17
+P3_GROUP_18
+P3_GROUP_21
+P3_GROUP_24
+P3_GROUP_25
+P3_GROUP_27
+P3_GROUP_29
+P3_GROUP_39
+P3_GROUP_392
+P3_GROUP_40
+P3_GROUP_42
+P3_GROUP_47
+P3_GROUP_5
+P3_GROUP_50
+P3_GROUP_52
+P3_GROUP_69
+P3_GROUP_74
+P3_GROUP_75
+P3_GROUP_76
+P3_GROUP_77
+P3_GROUP_80
+P3_GROUP_81
+P3_GROUP_88
+P3_GROUP_9
+P3_GROUP_91
+P3_GROUP_96
+P3_GROUP_99
 
-We would also like to point out that we connected to two Akureyri groups (group 25 and group 69) and then we were also able to connect to a group located in Maryland USA (group 50), and we would like to make the argument that that group is remote enough to be put on the bounty list. 
+* *receivedMessageLog.txt* includes all of the messages that we received from other servers, including the oracle, with a timestamp of the time we received it. We received messages from 20 unique groups not including the oracle, the groups are:
+P3_GROUP_111
+P3_GROUP_13
+P3_GROUP_14
+P3_GROUP_16
+P3_GROUP_17
+P3_GROUP_18
+P3_GROUP_21
+P3_GROUP_24
+P3_GROUP_25
+P3_GROUP_27
+P3_GROUP_42
+P3_GROUP_47
+P3_GROUP_50
+P3_GROUP_69
+P3_GROUP_72
+P3_GROUP_74
+P3_GROUP_75
+P3_GROUP_77
+P3_GROUP_88
+P3_GROUP_96
 
-# Author
+We would like to point out that we connected to five Akureyri groups (group 16, group 21, group 24, group 25, group 69) and then we were also able to connect to a group located in Maryland USA (group 50), and we would like to make the argument that that group is remote enough to be put on the bounty list. 
+
+# Authors
 Name: Nökkvi Karlsson & Egill Aron Þórisson.
 Email: nokkvi17@ru.is & egillt17@ru.is
